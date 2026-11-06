@@ -122,7 +122,9 @@ El proyecto está en Vercel. Con el repositorio conectado, cada `git push` a `ma
 
 ### Vercel Web Analytics
 
-El código ya está integrado con `@vercel/analytics`. Falta una sola cosa, y solo la primera vez: en el panel de Vercel, entrá al proyecto, abrí **Analytics** y tocá **Enable**. Sin ese paso el sitio funciona igual, pero no cuenta visitas.
+Ya está integrado con `@vercel/analytics` y activado en el proyecto `die-engel-singen`. Las visitas se ven en el panel de Vercel, en la pestaña **Analytics**. No cuenta navegadores automatizados.
+
+Si alguna vez publicás el sitio en otro proyecto de Vercel, hay que activarlo de nuevo: abrí **Analytics** en ese proyecto y tocá **Enable**. Sin ese paso el sitio funciona igual, pero no cuenta visitas.
 
 ### Dominio propio
 
