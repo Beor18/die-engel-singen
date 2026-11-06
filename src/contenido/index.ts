@@ -14,14 +14,15 @@ function aEstrofas(texto: string): string[][] {
 }
 
 function preparar(fuente: PaginaFuente): Pagina {
-  const nombre = fuente.nombreEnIndice ?? fuente.titulo;
+  const nombre = fuente.nombre ?? fuente.titulo;
   if (!nombre) {
-    throw new Error(`La página "${fuente.id}" necesita "titulo" o "nombreEnIndice".`);
+    throw new Error(`La página "${fuente.id}" necesita "titulo" o "nombre".`);
   }
   return {
     ...fuente,
     ruta: fuente.tipo === "portada" ? "/" : `/poema/${fuente.id}`,
     nombre,
+    nombreIndice: fuente.nombreEnIndice ?? nombre,
     estrofas: aEstrofas(fuente.texto),
     lineasSignificado: fuente.significado ? lineas(fuente.significado.texto) : [],
   };

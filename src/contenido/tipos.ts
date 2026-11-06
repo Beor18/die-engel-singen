@@ -46,7 +46,9 @@ export type PaginaFuente = {
   tipo: "portada" | "poema";
   /** Título tal como aparece en la página, o `null` si no tiene. */
   titulo: string | null;
-  /** Cómo se llama la página en el índice si no tiene título o es la portada. */
+  /** Nombre de la página en la pestaña y al compartir. Hace falta si `titulo` es `null`. */
+  nombre?: string;
+  /** Nombre solo para el índice, si tiene que ser distinto de los anteriores. */
   nombreEnIndice?: string;
   imagen: {
     /** Archivo dentro de /public, en formato vertical 9:16. */
@@ -82,8 +84,10 @@ export type PaginaFuente = {
 export type Pagina = PaginaFuente & {
   /** Dirección de la página dentro del sitio. */
   ruta: string;
-  /** Nombre para mostrar en el índice y al compartir. */
+  /** Nombre en la pestaña, al compartir y para lectores de pantalla. */
   nombre: string;
+  /** Nombre en el índice. */
+  nombreIndice: string;
   /** Estrofas, cada una con sus líneas. */
   estrofas: string[][];
   /** Líneas del significado, vacío si la página no tiene. */

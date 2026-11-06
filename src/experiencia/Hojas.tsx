@@ -99,7 +99,7 @@ export function HojaIndice({
                   <span className="indice-miniatura">
                     <Image src={p.imagen.src} alt="" fill sizes="56px" quality={60} />
                   </span>
-                  <span className="indice-nombre">{p.nombre}</span>
+                  <span className="indice-nombre">{p.nombreIndice}</span>
                 </Link>
               </li>
             ))}

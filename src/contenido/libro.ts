@@ -27,7 +27,7 @@ export const PAGINAS_FUENTE: PaginaFuente[] = [
     orden: 0,
     tipo: "portada",
     titulo: "DIE ENGEL SINGEN",
-    nombreEnIndice: "Portada",
+    nombre: "Portada",
     imagen: {
       src: "/libro/portada.png",
       alt: "Portada del libro. Un hombre de abrigo oscuro y capa roja mira un valle bajo la lluvia, junto a unas ruinas. En las nubes se dibujan dos alas.",
@@ -58,7 +58,8 @@ Por Fernando López
     orden: 1,
     tipo: "poema",
     titulo: null,
-    nombreEnIndice: "Hay decisiones que cambian caminos",
+    nombre: "Hay decisiones que cambian caminos",
+    nombreEnIndice: "DECIDIR",
     imagen: {
       src: "/libro/hay-decisiones.png",
       alt: "Un sendero entre pastos dorados avanza hacia el sol del atardecer, sobre unas sierras lejanas.",

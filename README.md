@@ -49,8 +49,9 @@ Con eso ya está. Antes de publicar, corré `pnpm check`.
 |-------|----------------|
 | `id` | Identificador y dirección. Solo minúsculas, números y guiones |
 | `orden` | Posición. Las páginas se ordenan solas por este número |
-| `titulo` | Título tal como aparece. Si es `null`, sumá `nombreEnIndice` |
-| `nombreEnIndice` | Nombre en el índice y al compartir, para páginas sin título |
+| `titulo` | Título tal como aparece. Si es `null`, sumá `nombre` |
+| `nombre` | Nombre en la pestaña y al compartir, para páginas sin título |
+| `nombreEnIndice` | Opcional: nombre solo para el índice, si tiene que ser distinto |
 | `imagen` | Archivo y descripción de la imagen |
 | `texto` | El poema. Si ya está en la imagen no se dibuja encima: se usa en el modo Texto, en los buscadores y en los lectores de pantalla |
 | `significado.texto` | Se dibuja en cursiva con el adorno, respetando tus saltos de línea |
