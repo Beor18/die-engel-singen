@@ -212,6 +212,7 @@ significa «mujer y hombre» (Entre Opuestos)
     orden: 4,
     tipo: "poema",
     titulo: "Marathon",
+    nombreEnIndice: "MARATHON",
     imagen: {
       src: "/libro/marathon.png",
       alt: "Un corredor avanza por una ruta mojada hacia un claro de luz que se abre entre las nubes.",
@@ -255,6 +256,7 @@ altibajos inevitables de la vida. (Marathon)
     orden: 5,
     tipo: "poema",
     titulo: "Ausländer",
+    nombreEnIndice: "AUSLÄNDER",
     imagen: {
       src: "/libro/auslander.png",
       alt: "Una pareja camina de noche bajo la lluvia por una calle empedrada con faroles y un café encendido. Al fondo, una cúpula iluminada.",
