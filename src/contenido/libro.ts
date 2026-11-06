@@ -426,4 +426,51 @@ una forma de escapar de lo que se siente.
       ],
     },
   },
+  {
+    id: "guten-appetit",
+    orden: 9,
+    tipo: "poema",
+    titulo: "GUTEN APPETIT",
+    imagen: {
+      src: "/libro/guten-appetit.png",
+      alt: "Una larga mesa de banquete con mantel de terciopelo rojo, copas de vino, platos dorados y candelabros encendidos. Al fondo, los invitados conversan de pie. En primer plano, una silla dorada vacía.",
+    },
+    texto: `
+Yo puse la mesa.
+Ellos pusieron las reglas.
+
+Yo cociné la cena.
+Ellos repartieron las sillas.
+
+Brindaron por el esfuerzo,
+se sirvieron otra copa
+y me agradecieron de pie.
+
+No había lugar para mí.
+
+Pero dejaron los platos.
+`,
+    significado: {
+      texto: `
+«Guten Appetit»: buen provecho. Una mesa
+donde algunos comen y otros solo sirven.
+`,
+      enLaImagen: true,
+    },
+    tono: "#e6b15c",
+    clima: {
+      particulas: [{ tipo: "polen", cantidad: 0.7 }],
+      zonas: [
+        { tipo: "viento", x: 0.08, y: 0.195, rx: 0.09, ry: 0.05, fuerza: 1.1, velocidad: 3 },
+        { tipo: "luz", x: 0.046, y: 0.172, rx: 0.1, ry: 0.056, fuerza: 0.16, velocidad: 5.5, color: "#ffc16b" },
+        { tipo: "luz", x: 0.013, y: 0.21, rx: 0.08, ry: 0.045, fuerza: 0.14, velocidad: 6.1, color: "#ffc16b" },
+        { tipo: "luz", x: 0.134, y: 0.218, rx: 0.1, ry: 0.056, fuerza: 0.16, velocidad: 5, color: "#ffc16b" },
+        { tipo: "luz", x: 0.14, y: 0.44, rx: 0.1, ry: 0.04, fuerza: 0.16, velocidad: 4.5, color: "#ffc16b" },
+        { tipo: "luz", x: 0.96, y: 0.267, rx: 0.08, ry: 0.036, fuerza: 0.16, velocidad: 4.8, color: "#ffc16b" },
+        { tipo: "humo", x: 0.046, y: 0.125, rx: 0.06, ry: 0.045, fuerza: 0.35, velocidad: 0.8, color: "#d8c8a8" },
+        { tipo: "centelleo", x: 0.28, y: 0.68, rx: 0.3, ry: 0.105, fuerza: 0.7, velocidad: 1.3 },
+        { tipo: "agua", x: 0.84, y: 0.765, rx: 0.15, ry: 0.028, fuerza: 0.5, velocidad: 0.6 },
+      ],
+    },
+  },
 ];

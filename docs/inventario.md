@@ -14,6 +14,7 @@ Cada página trae una imagen de 941 x 1672 px, extraída sin recomprimir a `publ
 | 7 | `prostitution.png` | PROSTITUTION | En la imagen | Texto del PDF, 2 líneas, banda sólida |
 | 8 | `platz-eins.png` | PLATZ EINS | En la imagen | En la imagen, no se dibuja encima |
 | 9 | `pills-bajo-control.png` | PILLS BAJO CONTROL | En la imagen | Texto del PDF, 2 líneas, banda sólida |
+| 10 | `guten-appetit.png` | GUTEN APPETIT | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 
 ## Medidas tomadas del PDF
 
