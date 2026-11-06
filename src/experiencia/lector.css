@@ -1,0 +1,1075 @@
+/*
+ * El lector. Todo se mide contra el marco de 9:16: `--u` equivale a un punto de
+ * la página original del PDF (540 x 960), así la banda, el adorno y el
+ * significado caen exactamente donde están en el libro, en cualquier pantalla.
+ */
+
+.lector {
+  --u: calc(100cqw / 540);
+  --papel: rgb(247 247 245);
+  --seguro-arriba: env(safe-area-inset-top, 0px);
+  --seguro-abajo: env(safe-area-inset-bottom, 0px);
+  --seguro-izq: env(safe-area-inset-left, 0px);
+  --seguro-der: env(safe-area-inset-right, 0px);
+  --vh: 100vh;
+  --barra: 0px;
+  --margen: 0px;
+  --alto-libre: calc(var(--vh) - var(--barra) - var(--seguro-arriba) - var(--seguro-abajo) - var(--margen) * 2);
+  --marco-alto: min(var(--alto-libre), calc(100vw * 16 / 9));
+  --marco-ancho: calc(var(--marco-alto) * 9 / 16);
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--tormenta);
+  color: var(--papel);
+}
+
+@supports (height: 100dvh) {
+  .lector {
+    --vh: 100dvh;
+  }
+}
+
+/* ---------- Atmósfera ---------- */
+
+.fondo {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.fondo-imagen {
+  object-fit: cover;
+  object-position: center 88%;
+  filter: blur(34px) brightness(0.62) saturate(1.22);
+  transform: scale(1.18);
+}
+
+.fondo-nueva {
+  animation: aparecer 1.4s ease both;
+}
+
+.fondo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 28%, rgb(2 3 5 / 0.74) 100%);
+}
+
+.clima,
+.relampago {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.clima {
+  width: 100%;
+  height: 100%;
+}
+
+.relampago {
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 28%, #e7f0f8, #8fa6bb 70%);
+  mix-blend-mode: soft-light;
+}
+
+/* ---------- La página ---------- */
+
+.escena {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--seguro-arriba) + var(--margen)) 0
+    calc(var(--seguro-abajo) + var(--barra) + var(--margen));
+  touch-action: pan-y pinch-zoom;
+}
+
+.escena:focus {
+  outline: none;
+}
+
+.marco {
+  position: relative;
+  flex: none;
+  width: var(--marco-ancho);
+  height: var(--marco-alto);
+  overflow: hidden;
+  container-type: inline-size;
+  background: #05080b;
+  transform: translateX(var(--arrastre, 0px));
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow:
+    0 0 90px color-mix(in srgb, var(--tono) 16%, transparent),
+    0 28px 90px rgb(0 0 0 / 0.6);
+}
+
+.capa {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.38s ease,
+    visibility 0s linear 0.38s;
+}
+
+.capa[data-activa="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.38s ease;
+}
+
+.capa img {
+  object-fit: cover;
+  transition: opacity 0.6s ease;
+}
+
+.js .capa[data-lista="false"] img {
+  opacity: 0;
+}
+
+.vivo {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ---------- Significado: medidas tomadas del PDF ---------- */
+
+.significado {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  color: var(--papel);
+}
+
+.significado[data-banda="suave"] {
+  --alfa: 0.78;
+}
+
+.significado[data-banda="solida"] {
+  --alfa: 1;
+}
+
+.significado-banda {
+  position: absolute;
+  inset: auto 0 0;
+  height: 17.5%;
+  background: linear-gradient(
+    to top,
+    rgb(2 3 5 / var(--alfa)) 0%,
+    rgb(2 3 5 / var(--alfa)) 78.57%,
+    rgb(2 3 5 / 0) 100%
+  );
+  animation: aparecer 0.8s 0.5s both;
+}
+
+.significado-adorno {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--u) * (64.58 + (var(--lineas) - 1) * 25.08));
+  width: calc(var(--u) * 220);
+  height: calc(var(--u) * 19);
+  transform: translateX(-50%);
+}
+
+.significado-texto {
+  position: absolute;
+  inset: auto 0 calc(var(--u) * 32.6);
+  margin: 0;
+  font: italic 400 calc(var(--u) * 22) / calc(var(--u) * 25.08) var(--f-texto);
+  text-align: center;
+  animation: emerger 1s 1s both;
+}
+
+.significado-texto span {
+  display: block;
+  white-space: nowrap;
+}
+
+.adorno {
+  display: block;
+  overflow: visible;
+}
+
+.significado-adorno .adorno-linea {
+  stroke-dasharray: 98;
+  animation: trazar 1s 0.75s both;
+}
+
+.significado-adorno .adorno-estrella {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nacer 0.7s 0.65s both;
+}
+
+/* ---------- Entrar al libro ---------- */
+
+.entrar {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: 87.4%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2.6cqw;
+  min-height: max(44px, 9cqw);
+  padding: 0 5cqw;
+  color: var(--papel);
+  font: italic 400 max(1.0625rem, 4.7cqw) / 1 var(--f-texto);
+  text-decoration: none;
+  white-space: nowrap;
+  text-shadow:
+    0 1px 14px #000,
+    0 0 3px rgb(0 0 0 / 0.85);
+  background: radial-gradient(closest-side, rgb(3 5 8 / 0.66), transparent);
+  transition: opacity 1.4s ease;
+}
+
+.entrar::before,
+.entrar::after {
+  content: "";
+  width: 6cqw;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.72;
+  transition: width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.entrar:hover::before,
+.entrar:hover::after,
+.entrar:focus-visible::before,
+.entrar:focus-visible::after {
+  width: 10cqw;
+}
+
+/* ---------- Apertura ---------- */
+
+.apertura-velo {
+  display: none;
+}
+
+.apertura .apertura-velo {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.apertura .lector {
+  background: #000;
+}
+
+.apertura .capa[data-activa="true"],
+.apertura .vivo,
+.apertura .fondo {
+  opacity: 0;
+  transition: none;
+}
+
+.apertura .marco {
+  background: transparent;
+  box-shadow: none;
+}
+
+.apertura .controles,
+.apertura .progreso,
+.apertura .entrar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* La estrella cae exacto sobre la de la portada: el negro se vuelve la imagen. */
+.apertura-adorno {
+  position: absolute;
+  left: 50.6%;
+  top: 26.69%;
+  width: calc(var(--u) * 220);
+  height: calc(var(--u) * 19);
+  color: #d3213a;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 1.4cqw rgb(211 33 58 / 0.85));
+}
+
+.apertura-adorno .adorno-linea {
+  stroke-dasharray: 98;
+  animation: trazar 0.85s 0.12s cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+
+.apertura-adorno .adorno-estrella {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation:
+    nacer 0.6s both,
+    latir 1.8s 0.7s ease-in-out infinite;
+}
+
+/* ---------- Progreso ---------- */
+
+.progreso {
+  position: absolute;
+  z-index: 3;
+  top: var(--seguro-arriba);
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 3px;
+  height: 2px;
+  pointer-events: none;
+  transition: opacity 1s ease;
+}
+
+.progreso-marca {
+  flex: 1;
+  background: rgb(255 255 255 / 0.22);
+  transition: background-color 0.8s ease;
+}
+
+.progreso-marca[data-estado="leida"] {
+  background: rgb(255 255 255 / 0.58);
+}
+
+.progreso-marca[data-estado="actual"] {
+  background: var(--tono);
+}
+
+/* ---------- Controles ---------- */
+
+.controles {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: calc(56px + var(--seguro-abajo));
+  padding: 0 calc(4px + var(--seguro-der)) var(--seguro-abajo) calc(4px + var(--seguro-izq));
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+}
+
+.boton-texto {
+  appearance: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--papel);
+  font: italic 400 1.0625rem / 1 var(--f-texto);
+  cursor: pointer;
+  text-shadow: 0 1px 10px rgb(0 0 0 / 0.75);
+  opacity: 0.9;
+  transition: opacity 0.2s ease;
+}
+
+@media (hover: hover) {
+  .boton-texto:hover {
+    opacity: 1;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+  }
+}
+
+.flecha {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: var(--papel);
+  opacity: 0.9;
+  filter: drop-shadow(0 1px 6px rgb(0 0 0 / 0.75));
+  transition:
+    opacity 0.2s ease,
+    transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+a.flecha:hover {
+  opacity: 1;
+}
+
+a.flecha-anterior:hover {
+  transform: translateX(-3px);
+}
+
+a.flecha-siguiente:hover {
+  transform: translateX(3px);
+}
+
+.numeral {
+  font: 400 0.9375rem / 1 var(--f-texto);
+  font-variant-numeric: lining-nums;
+  color: rgb(247 247 245 / 0.78);
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.75);
+  white-space: nowrap;
+}
+
+@media (max-width: 379.98px) {
+  .numeral {
+    display: none;
+  }
+}
+
+/* Celulares muy altos: los controles van en el espacio que sobra debajo de la página. */
+@media (max-aspect-ratio: 45/86) {
+  .lector {
+    --barra: 56px;
+  }
+}
+
+/* Tabletas en vertical: igual, con un poco más de aire. */
+@media (min-width: 600px) and (min-aspect-ratio: 45/86) and (max-aspect-ratio: 1/1) {
+  .lector {
+    --barra: 64px;
+  }
+
+  .controles {
+    height: calc(64px + var(--seguro-abajo));
+    padding-inline: 16px;
+  }
+}
+
+/*
+ * Celulares donde la página ya ocupa todo el alto: los controles flotan sobre
+ * ella y se retiran solos para no tapar el texto. Un toque los trae de vuelta.
+ */
+@media (max-width: 599.98px) and (min-aspect-ratio: 45/86) and (max-aspect-ratio: 1/1) {
+  .controles {
+    background: linear-gradient(to top, rgb(2 3 5) 0%, rgb(2 3 5) 74%, rgb(2 3 5 / 0) 100%);
+    height: calc(76px + var(--seguro-abajo));
+    padding-top: 20px;
+  }
+
+  .lector[data-controles="ocultos"] .controles {
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+  }
+
+  .lector[data-controles="ocultos"] .controles:focus-within {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
+/* Pantallas anchas: los controles se van a los costados y la página queda sola. */
+@media (min-aspect-ratio: 1001/1000) {
+  .lector {
+    --margen: 2.5vh;
+  }
+
+  .marco {
+    outline: 1px solid rgb(255 255 255 / 0.05);
+  }
+
+  .controles {
+    inset: 0;
+    height: auto;
+    padding: 0;
+    pointer-events: none;
+  }
+
+  .controles > * {
+    pointer-events: auto;
+  }
+
+  .flecha {
+    position: absolute;
+    top: 50%;
+    width: 64px;
+    height: 112px;
+    margin-top: -56px;
+  }
+
+  .flecha-anterior {
+    right: calc(50% + var(--marco-ancho) / 2 + 20px);
+  }
+
+  .flecha-siguiente {
+    left: calc(50% + var(--marco-ancho) / 2 + 20px);
+  }
+
+  .flecha svg {
+    width: 34px;
+    height: 34px;
+  }
+
+  .controles .boton-texto {
+    position: absolute;
+    font-size: 1.1875rem;
+    padding: 0 6px;
+  }
+
+  .control-indice {
+    left: calc(30px + var(--seguro-izq));
+    bottom: 22px;
+  }
+
+  .control-lectura {
+    left: calc(100px + var(--seguro-izq));
+    bottom: 22px;
+  }
+
+  .control-compartir {
+    right: calc(30px + var(--seguro-der));
+    bottom: 22px;
+  }
+
+  .numeral {
+    position: absolute;
+    right: calc(36px + var(--seguro-der));
+    top: 28px;
+  }
+
+  .progreso {
+    top: 50%;
+    left: auto;
+    right: calc(44px + var(--seguro-der));
+    bottom: auto;
+    flex-direction: column;
+    width: 2px;
+    height: min(44vh, 280px);
+    transform: translateY(-50%);
+  }
+}
+
+/* ---------- Avisos dentro de la página ---------- */
+
+@media (min-aspect-ratio: 1001/1000) {
+  .pista {
+    display: none;
+  }
+}
+
+.pista {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: calc(var(--barra) + var(--seguro-abajo) + 19%);
+  margin: 0;
+  padding: 10px 16px;
+  background: rgb(2 3 5 / 0.8);
+  color: var(--papel);
+  font: italic 400 1rem / 1.2 var(--f-texto);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: pista 4.6s ease both;
+  pointer-events: none;
+}
+
+.espera {
+  position: absolute;
+  z-index: 8;
+  inset: auto 8cqw 22%;
+  padding: 4cqw 5cqw;
+  background: rgb(2 3 5 / 0.84);
+  color: var(--papel);
+  text-align: center;
+}
+
+.espera p {
+  margin: 12px 0 0;
+  font: italic 400 max(0.9375rem, 3.6cqw) / 1.3 var(--f-texto);
+}
+
+.espera-barra {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.2);
+}
+
+.espera-barra::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 36%;
+  background: var(--tono);
+  animation: vaiven 1.15s ease-in-out infinite alternate;
+}
+
+.falla {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 8cqw;
+  background: rgb(4 6 9 / 0.82);
+  text-align: center;
+}
+
+.falla p {
+  margin: 0;
+  font: 400 max(1.125rem, 5cqw) / 1.3 var(--f-texto);
+}
+
+.falla-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 18rem);
+}
+
+/* ---------- Hojas ---------- */
+
+.hoja {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden auto;
+  background: rgb(4 6 9 / 0.9);
+  color: var(--papel);
+  -webkit-backdrop-filter: blur(22px) saturate(1.1);
+  backdrop-filter: blur(22px) saturate(1.1);
+}
+
+.hoja[open] {
+  animation: aparecer 0.32s ease both;
+}
+
+.hoja::backdrop {
+  background: transparent;
+}
+
+.hoja-cuerpo {
+  width: min(100%, 72rem);
+  margin-inline: auto;
+  padding: calc(14px + var(--seguro-arriba)) calc(20px + var(--seguro-der)) calc(32px + var(--seguro-abajo))
+    calc(20px + var(--seguro-izq));
+}
+
+.hoja-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.hoja-cabecera h2 {
+  margin: 0;
+  font: 400 clamp(1.75rem, 6.4vw, 2.5rem) / 1.08 var(--f-titulo);
+}
+
+.hoja-cabecera .boton-texto {
+  flex: none;
+  padding-inline: 0 2px;
+}
+
+/* Índice */
+
+.indice {
+  display: grid;
+  gap: 40px;
+}
+
+.indice-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.indice-enlace {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 72px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.12);
+  color: inherit;
+  text-decoration: none;
+}
+
+.indice-miniatura {
+  position: relative;
+  flex: none;
+  width: 32px;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  background: #0a1015;
+}
+
+.indice-miniatura img {
+  object-fit: cover;
+}
+
+.indice-nombre {
+  font: 400 clamp(1.3125rem, 5.5vw, 2rem) / 1.14 var(--f-titulo);
+  overflow-wrap: anywhere;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.indice-enlace:hover .indice-nombre,
+.indice-enlace:focus-visible .indice-nombre {
+  transform: translateX(8px);
+}
+
+.indice-enlace[aria-current="page"] {
+  border-bottom-color: var(--papel);
+}
+
+.indice-enlace[aria-current="page"] .indice-nombre {
+  font-family: var(--f-texto);
+  font-style: italic;
+}
+
+.indice-movimiento {
+  margin-top: 14px;
+  padding-inline: 0;
+}
+
+.indice-vista {
+  display: none;
+}
+
+@media (min-width: 880px) and (min-aspect-ratio: 1001/1000) {
+  .hoja-indice .hoja-cuerpo {
+    padding-inline: 48px;
+  }
+
+  .indice {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 72px;
+    align-items: start;
+  }
+
+  .indice-enlace {
+    min-height: 62px;
+  }
+
+  .indice-miniatura {
+    display: none;
+  }
+
+  .indice-vista {
+    display: block;
+    position: sticky;
+    top: 24px;
+    height: min(calc(100vh - 130px), 680px);
+    aspect-ratio: 9 / 16;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgb(0 0 0 / 0.65);
+  }
+
+  .indice-vista img {
+    object-fit: cover;
+    animation: aparecer 0.5s ease both;
+  }
+}
+
+/* Modo de lectura */
+
+.hoja-texto .hoja-cuerpo {
+  width: min(100%, 40rem);
+}
+
+.lectura {
+  padding-block: 12px 28px;
+  font: 400 clamp(1.25rem, 5vw, 1.5rem) / 1.5 var(--f-texto);
+  text-align: center;
+}
+
+.lectura p {
+  margin: 0 0 1.35em;
+}
+
+.lectura span {
+  display: block;
+}
+
+.lectura-significado {
+  margin-top: 2.6em;
+  font-style: italic;
+  font-size: 0.9em;
+  line-height: 1.34;
+}
+
+.lectura-significado .adorno {
+  width: min(70%, 18rem);
+  height: 1.5rem;
+  margin: 0 auto 1rem;
+}
+
+/* Compartir */
+
+.hoja-compartir[open] {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(2 3 5 / 0.58);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.hoja-compartir .hoja-cuerpo {
+  width: min(100%, 27rem);
+  margin: 0;
+  background: rgb(9 14 19 / 0.97);
+  box-shadow: 0 -18px 70px rgb(0 0 0 / 0.6);
+}
+
+@media (min-width: 600px) {
+  .hoja-compartir[open] {
+    align-items: center;
+  }
+
+  .hoja-compartir .hoja-cuerpo {
+    padding: 24px 28px 28px;
+  }
+}
+
+.compartir-alcance {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+
+.compartir-alcance label {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  font: 400 1.0625rem / 1 var(--f-texto);
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.compartir-alcance label:has(input:checked) {
+  border-color: var(--papel);
+  background: rgb(255 255 255 / 0.14);
+  font-style: italic;
+}
+
+.compartir-alcance label:has(input:focus-visible) {
+  outline: 2px solid var(--papel);
+  outline-offset: 2px;
+}
+
+.compartir-alcance input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.compartir-que {
+  margin: 0 0 16px;
+  font: italic 400 1.0625rem / 1.35 var(--f-texto);
+}
+
+.compartir-acciones {
+  display: grid;
+  gap: 8px;
+}
+
+.boton-accion {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  background: none;
+  color: var(--papel);
+  font: 400 1.0625rem / 1.2 var(--f-texto);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.boton-accion:hover {
+  border-color: var(--papel);
+  background: rgb(255 255 255 / 0.09);
+}
+
+.boton-accion:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.boton-principal {
+  border-color: var(--papel);
+  background: var(--papel);
+  color: #0a1015;
+}
+
+.boton-principal:hover {
+  background: #fff;
+}
+
+.compartir-aviso {
+  min-height: 1.4em;
+  margin: 12px 0 0;
+  font: italic 400 1rem / 1.35 var(--f-texto);
+  text-align: center;
+}
+
+/* ---------- Foco ---------- */
+
+.lector a:focus-visible,
+.lector button:focus-visible,
+.hoja a:focus-visible,
+.hoja button:focus-visible {
+  outline: 2px solid var(--papel);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+/* ---------- Movimiento ---------- */
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes emerger {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--u) * 5));
+  }
+}
+
+@keyframes trazar {
+  from {
+    stroke-dashoffset: 98;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes nacer {
+  from {
+    opacity: 0;
+    transform: scale(0.2) rotate(-45deg);
+  }
+}
+
+@keyframes latir {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes vaiven {
+  to {
+    transform: translateX(178%);
+  }
+}
+
+@keyframes pista {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  12%,
+  84% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lector *,
+  .lector *::before,
+  .lector *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  .marco,
+  .flecha,
+  .indice-nombre {
+    transition: none;
+  }
+
+  .capa,
+  .capa[data-activa="true"] {
+    transition-duration: 0.16s;
+  }
+
+  .pista {
+    animation: none;
+  }
+
+  .espera-barra::after {
+    width: 100%;
+    opacity: 0.55;
+  }
+}
+
+/* Lo mismo, para quien elige "Quitar el movimiento" en el índice. */
+.lector[data-quieto="true"] *,
+.lector[data-quieto="true"] *::before,
+.lector[data-quieto="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+}
+
+.lector[data-quieto="true"] .marco,
+.lector[data-quieto="true"] .flecha,
+.lector[data-quieto="true"] .indice-nombre {
+  transition: none;
+}
+
+.lector[data-quieto="true"] .capa {
+  transition-duration: 0.16s;
+}
+
+.lector[data-quieto="true"] .pista {
+  animation: none;
+}
+
+.lector[data-quieto="true"] .espera-barra::after {
+  width: 100%;
+  opacity: 0.55;
+}
