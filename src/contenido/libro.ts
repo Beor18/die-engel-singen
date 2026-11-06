@@ -347,7 +347,7 @@ la soledad en un instante de compañía
     tipo: "poema",
     titulo: "PLATZ EINS",
     imagen: {
-      src: "/libro/platz-eins.png",
+      src: "/libro/platz-eins-rojo.png",
       alt: "Un hombre de traje, de espaldas e inmóvil, en medio de una fiesta con luces rojas y azules, copas, champán y papel dorado en el aire.",
     },
     texto: `
@@ -389,7 +389,7 @@ aunque cuesta permanecer en ella.
     tipo: "poema",
     titulo: "PILLS BAJO CONTROL",
     imagen: {
-      src: "/libro/pills-bajo-control.png",
+      src: "/libro/pills-bajo-control-rojo.png",
       alt: "Un hombre de espaldas fuma frente a los edificios iluminados de una ciudad de noche. En primer plano, un cenicero y un frasco de pastillas volcado sobre una mesa.",
     },
     texto: `
@@ -432,7 +432,7 @@ una forma de escapar de lo que se siente.
     tipo: "poema",
     titulo: "GUTEN APPETIT",
     imagen: {
-      src: "/libro/guten-appetit.png",
+      src: "/libro/guten-appetit-rojo.png",
       alt: "Una larga mesa de banquete con mantel de terciopelo rojo, copas de vino, platos dorados y candelabros encendidos. Al fondo, los invitados conversan de pie. En primer plano, una silla dorada vacía.",
     },
     texto: `

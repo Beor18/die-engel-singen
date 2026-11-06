@@ -136,6 +136,12 @@ Si alguna vez publicás el sitio en otro proyecto de Vercel, hay que activarlo d
 
 Sin esa variable se usa el dominio de producción que informa Vercel, así que el sitio siempre apunta a una dirección real.
 
+### Cambiar una imagen
+
+Guardá la versión nueva con otro nombre de archivo y actualizá `imagen.src` en `libro.ts`. Si reemplazás un archivo con el mismo nombre, los navegadores pueden seguir mostrando el anterior hasta un mes.
+
+Si la imagen trae integrado el adorno de líneas y estrella, tiene que ir del rojo de la portada, `#98121A`.
+
 ### Vistas previas al compartir
 
 - WhatsApp, Facebook, X y otras redes leen las imágenes de `/compartir/<id>.jpg`, de 1200 x 630 y menos de 100 KB.

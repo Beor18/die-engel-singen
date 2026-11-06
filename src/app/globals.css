@@ -1,5 +1,7 @@
 :root {
   --tormenta: #0b1318;
+  /* El rojo de la estrella de la portada. Todos los adornos del libro van de este color. */
+  --firulete: #98121a;
   color-scheme: dark;
 }
 

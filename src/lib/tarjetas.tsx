@@ -11,6 +11,7 @@ import { LIBRO, type Pagina } from "@/contenido";
  */
 
 const NEGRO = "rgb(2,3,5)";
+const FIRULETE = "rgb(152,18,26)";
 
 async function leerFuente(archivo: string) {
   return readFile(path.join(process.cwd(), "src/assets/fuentes", archivo));
@@ -45,10 +46,10 @@ async function aJpeg(respuesta: ImageResponse, calidad: number) {
 function Adorno({ ancho }: { ancho: number }) {
   return (
     <svg width={ancho} height={(ancho * 19) / 220} viewBox="160 -9.5 220 19">
-      <path d="M160 0H258M282 0H380" stroke="rgb(240,240,237)" strokeWidth="0.65" fill="none" />
+      <path d="M160 0H258M282 0H380" stroke={FIRULETE} strokeWidth="1.2" fill="none" />
       <path
         d="M270 -9C269 -2 267 -1 263 0C267 1 269 2 270 9C271 2 273 1 277 0C273 -1 271 -2 270 -9Z"
-        fill="rgb(247,247,245)"
+        fill={FIRULETE}
       />
     </svg>
   );
