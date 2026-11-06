@@ -79,6 +79,21 @@ function useMovimiento() {
   return { sistema, quieto, reducido: sistema || quieto };
 }
 
+type Gesto = {
+  x: number;
+  y: number;
+  t: number;
+  id: number;
+  /** Ya se confirmó que el dedo se mueve en vertical. */
+  vertical: boolean;
+  /** `true` si el dedo sube, o sea, si baja por el libro. */
+  avanza: boolean;
+  destino: number | null;
+  /** El dedo lleva el lavado. Si es `false`, no hay WebGL o la imagen no está lista. */
+  conLavado: boolean;
+  progreso: number;
+};
+
 function Flecha({ sentido }: { sentido: "anterior" | "siguiente" }) {
   return (
     <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" focusable="false">
@@ -143,7 +158,7 @@ export function Lector({ children }: { children: ReactNode }) {
   const mostradaRef = useRef(mostrada);
   const urlRef = useRef(indiceUrl);
   const ultimoPaso = useRef(Number.NEGATIVE_INFINITY);
-  const gesto = useRef<{ x: number; y: number; t: number; id: number } | null>(null);
+  const gesto = useRef<Gesto | null>(null);
   const ampliada = useRef(false);
   const usandoTeclado = useRef(false);
   const [motorListo, setMotorListo] = useState(false);
@@ -164,6 +179,14 @@ export function Lector({ children }: { children: ReactNode }) {
     },
     [router],
   );
+
+  /** Deja `destino` como página a la vista. */
+  const asentar = useCallback((origen: number, destino: number) => {
+    clima.current?.definir(PAGINAS[destino].clima?.particulas, PAGINAS[destino].tono);
+    mostradaRef.current = destino;
+    setPrevia(origen);
+    setMostrada(destino);
+  }, []);
 
   /** Muestra la página `destino`: con lavado si se puede, y si no, con un fundido. */
   const transicionar = useCallback((destino: number) => {
@@ -189,11 +212,8 @@ export function Lector({ children }: { children: ReactNode }) {
       }
     }
 
-    clima.current?.definir(PAGINAS[destino].clima?.particulas, PAGINAS[destino].tono);
-    mostradaRef.current = destino;
-    setPrevia(origen);
-    setMostrada(destino);
-  }, []);
+    asentar(origen, destino);
+  }, [asentar]);
 
   // La URL cambió: si la imagen ya está, pasamos; si no, espera su onLoad.
   // `complete` también vale para una imagen que ya falló: no va a avisar de nuevo,
@@ -563,53 +583,121 @@ export function Lector({ children }: { children: ReactNode }) {
     };
   }, [enPortada]);
 
-  // Gestos táctiles.
-  const alTocar = (e: EventoPuntero<HTMLElement>) => {
-    if (e.pointerType === "mouse") return;
-    if (!e.isPrimary) {
-      gesto.current = null;
-      return;
-    }
-    if ((e.target as HTMLElement).closest("a,button")) return;
-    // Durante la apertura, un toque solo la salta. Con la página ampliada, el dedo la recorre.
-    if (ampliada.current || document.documentElement.classList.contains("apertura")) return;
-    gesto.current = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+  // Gestos táctiles: se baja por el libro como por cualquier página. El lavado sigue al dedo
+  // y solo se completa si se suelta pasado un tercio. Un toque solo muestra u oculta los controles.
+  const limpiarArrastre = () => {
+    marco.current?.style.removeProperty("--arrastre");
+    marco.current?.style.removeProperty("--significado-alfa");
   };
 
-  const soltarArrastre = () => marco.current?.style.removeProperty("--arrastre");
+  const cancelarGesto = () => {
+    if (gesto.current?.conLavado) vivo.current?.soltarArrastre(false);
+    gesto.current = null;
+    limpiarArrastre();
+  };
+
+  const alTocar = (e: EventoPuntero<HTMLElement>) => {
+    if (e.pointerType === "mouse") return;
+    // Un segundo dedo es para ampliar, no para pasar de página.
+    if (!e.isPrimary) {
+      cancelarGesto();
+      return;
+    }
+    // Sobre un control manda el control, salvo en la entrada: desde ahí también se puede deslizar.
+    const control = (e.target as HTMLElement).closest("a,button");
+    if (control && !control.classList.contains("entrar")) return;
+    // Durante la apertura, un toque solo la salta. Con la página ampliada, el dedo la recorre.
+    if (ampliada.current || document.documentElement.classList.contains("apertura")) return;
+    gesto.current = {
+      x: e.clientX,
+      y: e.clientY,
+      t: performance.now(),
+      id: e.pointerId,
+      vertical: false,
+      avanza: false,
+      destino: null,
+      conLavado: false,
+      progreso: 0,
+    };
+  };
 
   const alMover = (e: EventoPuntero<HTMLElement>) => {
     const g = gesto.current;
     if (!g || g.id !== e.pointerId) return;
-    const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
-    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-      marco.current?.style.setProperty("--arrastre", `${dx * 0.14}px`);
+
+    if (!g.vertical) {
+      if (Math.abs(dy) < 10 || Math.abs(dy) < Math.abs(e.clientX - g.x)) return;
+      // Con una página todavía cargando no hay desde dónde arrastrar.
+      if (mostradaRef.current !== urlRef.current) {
+        gesto.current = null;
+        return;
+      }
+      g.vertical = true;
+      g.avanza = dy < 0;
+      const actual = mostradaRef.current;
+      const destino = g.avanza ? (actual + 1) % total : actual - 1;
+      if (destino >= 0) {
+        g.destino = destino;
+        const a = imagenes.current.get(actual);
+        const b = imagenes.current.get(destino);
+        if (vivo.current && estaLista(a) && estaLista(b)) {
+          g.conLavado = vivo.current.empezarArrastre(a, b, g.avanza ? -1 : 1);
+        }
+      }
+      setControles(false);
+      setPista(false);
+    }
+
+    const recorrido = Math.max(0, g.avanza ? -dy : dy);
+    if (g.conLavado) {
+      const alto = marco.current?.offsetHeight || window.innerHeight;
+      g.progreso = Math.min(1, 0.1 + (0.9 * Math.max(0, recorrido - 10)) / (alto * 0.7));
+      vivo.current?.moverArrastre(g.progreso);
+      marco.current?.style.setProperty("--significado-alfa", String(Math.max(0, 1 - g.progreso * 2.4)));
+    } else if (!reducido) {
+      marco.current?.style.setProperty("--arrastre", `${(g.avanza ? -recorrido : recorrido) * 0.14}px`);
     }
   };
 
   const alSoltar = (e: EventoPuntero<HTMLElement>) => {
     const g = gesto.current;
-    gesto.current = null;
-    soltarArrastre();
     if (!g || g.id !== e.pointerId) return;
-    if (ampliada.current) return;
+    gesto.current = null;
+    limpiarArrastre();
     const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
     const dt = performance.now() - g.t;
-    const actual = urlRef.current;
 
-    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-      if (dx < 0) ir((actual + 1) % PAGINAS.length);
-      else if (actual > 0) ir(actual - 1);
+    if (!g.vertical) {
+      const esEnlace = (e.target as HTMLElement).closest("a");
+      if (!esEnlace && Math.abs(dx) < 12 && Math.abs(dy) < 12 && dt < 400 && !ampliada.current) {
+        setControles((v) => !v);
+      }
       return;
     }
-    if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && dt < 400) {
-      const x = e.clientX / window.innerWidth;
-      if (x < 0.26 && actual > 0) ir(actual - 1);
-      else if (x > 0.74) ir((actual + 1) % PAGINAS.length);
-      else setControles((v) => !v);
+
+    const destino = g.destino;
+    const recorrido = Math.max(0, g.avanza ? -dy : dy);
+    const rapido = recorrido > 36 && recorrido / Math.max(dt, 1) > 0.45;
+    const alcanza = g.conLavado ? g.progreso > 0.33 : recorrido > 64;
+
+    if (destino === null || !(alcanza || rapido)) {
+      if (g.conLavado) vivo.current?.soltarArrastre(false);
+      return;
     }
+
+    if (g.conLavado) {
+      const origen = mostradaRef.current;
+      const b = imagenes.current.get(destino);
+      const zonas = PAGINAS[destino].clima?.zonas;
+      const motor = vivo.current;
+      motor?.soltarArrastre(true, () => {
+        if (mostradaRef.current === destino && b) motor.escena(b, zonas);
+      });
+      asentar(origen, destino);
+    }
+    ir(destino);
   };
 
   const capas = new Set<number>([mostrada, indiceUrl]);
@@ -669,10 +757,7 @@ export function Lector({ children }: { children: ReactNode }) {
         onPointerDown={alTocar}
         onPointerMove={alMover}
         onPointerUp={alSoltar}
-        onPointerCancel={() => {
-          gesto.current = null;
-          soltarArrastre();
-        }}
+        onPointerCancel={cancelarGesto}
       >
         <div ref={marco} className="marco">
           {[...capas].map((i) => {
@@ -794,7 +879,7 @@ export function Lector({ children }: { children: ReactNode }) {
 
       {pista ? (
         <p className="pista" aria-hidden="true">
-          Deslizá para pasar de página
+          Deslizá hacia abajo para pasar de página
         </p>
       ) : null}
 

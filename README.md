@@ -113,6 +113,7 @@ docs/inventario.md          Inventario del PDF y medidas tomadas de él
 Decisiones que conviene conservar:
 
 - **La imagen original siempre está debajo.** La capa WebGL es transparente salvo en sus zonas, así el texto sigue siendo el `<img>` nítido. Si WebGL falla, el libro se ve igual, con fundidos en lugar del lavado.
+- **En celular se pasa de página en vertical**, como al bajar por cualquier página: el dedo sube y el lavado lo sigue. Si se suelta antes de un tercio, vuelve atrás. Un toque solo muestra u oculta los controles, nunca cambia de página.
 - **Con movimiento reducido** no hay apertura, clima ni lavado: solo un fundido breve. Lo mismo pasa si se elige **Quitar el movimiento** en el índice.
 - **Sin JavaScript** se ven la página y los enlaces a la anterior y la siguiente.
 - **El texto nunca se muestra dos veces.** Está en HTML solo para lectores de pantalla y buscadores, y a la vista únicamente si se abre el modo Texto.

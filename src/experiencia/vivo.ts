@@ -229,6 +229,8 @@ type Lavado = {
   duracion: number;
   semilla: number;
   alTerminar?: () => void;
+  /** Si está, el lavado no corre solo: lo lleva el dedo hasta que se suelta. */
+  dedo?: { progreso: number; soltado: boolean; desde: number; hasta: number };
 };
 
 export class Vivo {
@@ -407,6 +409,36 @@ export class Vivo {
     return true;
   }
 
+  /** Prepara un lavado que avanza solo cuanto avanza el dedo. */
+  empezarArrastre(a: HTMLImageElement, b: HTMLImageElement, dir: number) {
+    if (!this.lavar(a, b, dir, 1)) return false;
+    if (this.lavadoActual) {
+      this.lavadoActual.dedo = { progreso: 0, soltado: false, desde: 0, hasta: 0 };
+      this.lavadoActual.alTerminar = undefined;
+    }
+    return true;
+  }
+
+  moverArrastre(progreso: number) {
+    const dedo = this.lavadoActual?.dedo;
+    if (dedo && !dedo.soltado) dedo.progreso = progreso;
+  }
+
+  /** Al soltar, termina de lavar o vuelve atrás desde donde quedó el dedo. */
+  soltarArrastre(confirmar: boolean, alTerminar?: () => void) {
+    const l = this.lavadoActual;
+    if (!l?.dedo || l.dedo.soltado) {
+      alTerminar?.();
+      return;
+    }
+    const desde = l.dedo.progreso;
+    const hasta = confirmar ? 1 : 0;
+    l.dedo = { ...l.dedo, soltado: true, desde, hasta };
+    l.inicio = performance.now();
+    l.duracion = confirmar ? Math.max(240, (1 - desde) * 640) : Math.max(160, desde * 380);
+    l.alTerminar = alTerminar;
+  }
+
   iniciar() {
     if (this.corriendo) return;
     this.corriendo = true;
@@ -469,7 +501,13 @@ export class Vivo {
     const l = this.lavadoActual;
     if (!l) return;
     const { gl, lavado } = this;
-    const t = Math.min(1, (ahora - l.inicio) / l.duracion);
+    const dedo = l.dedo;
+    const siguePuesto = Boolean(dedo && !dedo.soltado);
+    const t = siguePuesto ? 0 : Math.min(1, (ahora - l.inicio) / l.duracion);
+    let avance = facilitar(t);
+    if (dedo) {
+      avance = siguePuesto ? dedo.progreso : dedo.desde + (dedo.hasta - dedo.desde) * (1 - (1 - t) ** 2);
+    }
     gl.useProgram(lavado.programa);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, l.a);
@@ -477,7 +515,7 @@ export class Vivo {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, l.b);
     gl.uniform1i(lavado.u.uB, 1);
-    gl.uniform1f(lavado.u.uP, facilitar(t));
+    gl.uniform1f(lavado.u.uP, avance);
     gl.uniform1f(lavado.u.uDir, l.dir);
     gl.uniform1f(lavado.u.uS, l.semilla);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
