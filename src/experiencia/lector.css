@@ -714,9 +714,17 @@ a.flecha-siguiente:hover {
   gap: 16px;
   min-height: 72px;
   padding: 8px 0;
-  border-bottom: 1px solid rgb(255 255 255 / 0.12);
-  color: inherit;
+  border-bottom: 1px solid var(--firulete);
+  /* El plateado del título de la portada: el blanco queda para la página elegida. */
+  color: #c9c7c2;
   text-decoration: none;
+  transition: color 0.25s ease;
+}
+
+.indice-enlace:hover,
+.indice-enlace:focus-visible,
+.indice-enlace[aria-current="page"] {
+  color: var(--papel);
 }
 
 .indice-miniatura {
@@ -743,13 +751,18 @@ a.flecha-siguiente:hover {
   transform: translateX(8px);
 }
 
-.indice-enlace[aria-current="page"] {
-  border-bottom-color: var(--papel);
-}
-
 .indice-enlace[aria-current="page"] .indice-nombre {
   font-family: var(--f-texto);
   font-style: italic;
+}
+
+.indice-estrella {
+  flex: none;
+  width: 16px;
+  height: 21px;
+  margin-left: auto;
+  fill: var(--firulete);
+  filter: drop-shadow(0 0 5px rgb(152 18 26 / 0.8));
 }
 
 .indice-movimiento {

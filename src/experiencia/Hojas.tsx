@@ -100,6 +100,11 @@ export function HojaIndice({
                     <Image src={p.imagen.src} alt="" fill sizes="56px" quality={60} />
                   </span>
                   <span className="indice-nombre">{p.nombreIndice}</span>
+                  {i === actual ? (
+                    <svg className="indice-estrella" viewBox="263 -9 14 18" aria-hidden="true" focusable="false">
+                      <path d="M270 -9C269 -2 267 -1 263 0C267 1 269 2 270 9C271 2 273 1 277 0C273 -1 271 -2 270 -9Z" />
+                    </svg>
+                  ) : null}
                 </Link>
               </li>
             ))}
