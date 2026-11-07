@@ -519,4 +519,46 @@ y desean cuando cae la noche.
       ],
     },
   },
+  {
+    id: "morgen",
+    orden: 11,
+    tipo: "poema",
+    titulo: "MORGEN",
+    imagen: {
+      src: "/libro/morgen.png",
+      alt: "Una pareja abrazada, de espaldas, mira el amanecer por un ventanal. En primer plano, una cama deshecha, dos tazas de café humeantes sobre una mesa y un vestido rojo sobre una silla.",
+    },
+    texto: `
+Bebimos por los errores,
+besamos por la libertad,
+y dejamos la ropa
+donde cayó.
+
+Cuando salió el sol,
+ella buscó su vestido.
+
+Yo el desayuno.
+La noche cumplió su promesa.
+`,
+    significado: {
+      texto: `
+«Morgen» significa «mañana»:
+cuando amanece y el amor comienza a hablar.
+`,
+      enLaImagen: true,
+    },
+    tono: "#f2a65a",
+    clima: {
+      particulas: [{ tipo: "polen", cantidad: 0.7 }],
+      zonas: [
+        { tipo: "luz", x: 0.964, y: 0.254, rx: 0.12, ry: 0.07, fuerza: 0.24, velocidad: 0.5, color: "#ffb56b" },
+        { tipo: "nube", x: 0.79, y: 0.06, rx: 0.06, ry: 0.07, fuerza: 0.35, velocidad: 0.6 },
+        { tipo: "humo", x: 0.24, y: 0.625, rx: 0.05, ry: 0.05, fuerza: 0.5, velocidad: 0.7, color: "#e8d8c0" },
+        { tipo: "humo", x: 0.365, y: 0.62, rx: 0.04, ry: 0.035, fuerza: 0.45, velocidad: 0.6, color: "#e8d8c0" },
+        { tipo: "luz", x: 0.143, y: 0.323, rx: 0.1, ry: 0.06, fuerza: 0.14, velocidad: 1, color: "#ffc98a" },
+        { tipo: "luz", x: 0.3, y: 0.54, rx: 0.2, ry: 0.048, fuerza: 0.06, velocidad: 0.4, color: "#ffb070" },
+        { tipo: "agua", x: 0.22, y: 0.755, rx: 0.22, ry: 0.025, fuerza: 0.5, velocidad: 0.5 },
+      ],
+    },
+  },
 ];

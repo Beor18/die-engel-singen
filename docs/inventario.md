@@ -16,6 +16,7 @@ Cada página trae una imagen de 941 x 1672 px, extraída sin recomprimir a `publ
 | 9 | `pills-bajo-control-rojo.png` | PILLS BAJO CONTROL | En la imagen | Texto del PDF, 2 líneas, banda sólida |
 | 10 | `guten-appetit-rojo.png` | GUTEN APPETIT | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 | 11 | `prohibido.png` | PROHIBIDO | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
+| 12 | `morgen.png` | MORGEN | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 
 ## Medidas tomadas del PDF
 
@@ -35,7 +36,7 @@ Estas medidas salen de los comandos de dibujo del propio PDF y se usan tal cual 
 
 Por pedido del autor, todos los adornos van del rojo de la estrella de la portada, `#98121A`, con trazo de 1,2 pt como en la portada. En el PDF son blancos, con trazo de 0,65 pt.
 
-Los adornos integrados en las imágenes de Platz Eins y Guten Appetit, y las líneas de Pills Bajo Control, se recolorearon píxel a píxel. Esas tres imágenes llevan `-rojo` en el nombre y el resto de cada imagen quedó idéntico al original. El adorno de Prohibido ya venía rojo, pero más brillante: se llevó al mismo tono.
+Los adornos integrados en las imágenes de Platz Eins y Guten Appetit, y las líneas de Pills Bajo Control, se recolorearon píxel a píxel. Esas tres imágenes llevan `-rojo` en el nombre y el resto de cada imagen quedó idéntico al original. Los adornos de Prohibido y Morgen ya venían rojos, pero más brillantes: se llevaron al mismo tono.
 
 ## Particularidades del original
 
