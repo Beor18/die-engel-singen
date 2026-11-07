@@ -652,4 +652,56 @@ en otros lo que todavía no reconocemos en nosotros.
       ],
     },
   },
+  {
+    id: "dosis",
+    orden: 14,
+    tipo: "poema",
+    titulo: "DOSIS",
+    imagen: {
+      src: "/libro/dosis.png",
+      alt: "Una habitación a oscuras, de noche. A la izquierda, espejos en arco reflejan luces rojas; a la derecha, una ventana mojada por la lluvia deja entrar un resplandor azul. Sobre una mesa redonda y brillante hay una copa, un cenicero de vidrio y una línea de polvo blanco. Al fondo, una cama deshecha.",
+    },
+    texto: `
+Tu boca,
+estas palabras,
+el silencio
+que no se acaba.
+
+Dame una línea.
+
+Mi cabeza
+cae de nuevo.
+
+Nos reímos
+sin saber por qué.
+aunque nadie lo cree.
+
+Tenemos tanto frío.
+
+Así que dame una línea más.
+`,
+    significado: {
+      texto: `
+«Dosis»: el frío, el ruido y la necesidad de repetir
+aquello que por un momento nos hace sentir.
+`,
+      enLaImagen: true,
+    },
+    tono: "#5fb2e6",
+    clima: {
+      zonas: [
+        { tipo: "agua", x: 0.875, y: 0.25, rx: 0.12, ry: 0.24, fuerza: 0.45, velocidad: 0.6 },
+        { tipo: "centelleo", x: 0.88, y: 0.22, rx: 0.1, ry: 0.17, fuerza: 0.55, velocidad: 0.9 },
+        { tipo: "luz", x: 0.82, y: 0.347, rx: 0.06, ry: 0.02, fuerza: 0.2, velocidad: 2.5, color: "#5cc8ff" },
+        { tipo: "luz", x: 0.93, y: 0.4, rx: 0.07, ry: 0.1, fuerza: 0.12, velocidad: 0.6, color: "#ff2a3a" },
+        { tipo: "luz", x: 0.06, y: 0.38, rx: 0.08, ry: 0.16, fuerza: 0.12, velocidad: 0.9, color: "#ff2030" },
+        { tipo: "luz", x: 0.21, y: 0.29, rx: 0.05, ry: 0.07, fuerza: 0.1, velocidad: 0.7, color: "#ff2030" },
+        { tipo: "humo", x: 0.18, y: 0.6, rx: 0.05, ry: 0.035, fuerza: 0.5, velocidad: 0.8, color: "#9fb4c4" },
+        { tipo: "centelleo", x: 0.36, y: 0.623, rx: 0.05, ry: 0.012, fuerza: 0.6, velocidad: 1 },
+        { tipo: "centelleo", x: 0.47, y: 0.789, rx: 0.04, ry: 0.01, fuerza: 0.5, velocidad: 0.7 },
+        { tipo: "nube", x: 0.78, y: 0.69, rx: 0.2, ry: 0.07, fuerza: 0.3, velocidad: 0.35 },
+        { tipo: "agua", x: 0.9, y: 0.975, rx: 0.1, ry: 0.022, fuerza: 0.6, velocidad: 0.6 },
+      ],
+    },
+  },
 ];
