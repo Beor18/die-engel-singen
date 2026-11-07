@@ -608,4 +608,48 @@ mientras otros deciden qué mostrar.
       ],
     },
   },
+  {
+    id: "spiegel",
+    orden: 13,
+    tipo: "poema",
+    titulo: "SPIEGEL",
+    imagen: {
+      src: "/libro/spiegel.png",
+      alt: "Un hombre de espaldas, con camisa clara, se mira en un espejo de marco dorado. En el reflejo, con los ojos cerrados, se acomoda una corona de cartón. A la izquierda arde una vela roja.",
+    },
+    texto: `
+Me miré al espejo.
+
+Tenía mis ojos,
+mi sonrisa
+y la misma camisa de anoche.
+
+Le pregunté si estaba orgulloso.
+
+No respondió.
+
+Estaba ocupado
+acomodándose la corona.
+`,
+    significado: {
+      texto: `
+«Spiegel» significa «espejo»: a veces criticamos
+en otros lo que todavía no reconocemos en nosotros.
+`,
+      enLaImagen: true,
+    },
+    tono: "#c8283a",
+    clima: {
+      zonas: [
+        { tipo: "nube", x: 0.66, y: 0.17, rx: 0.22, ry: 0.105, fuerza: 0.2, velocidad: 0.5 },
+        { tipo: "luz", x: 0.72, y: 0.115, rx: 0.09, ry: 0.04, fuerza: 0.1, velocidad: 0.9, color: "#ffcf8a" },
+        { tipo: "viento", x: 0.0425, y: 0.148, rx: 0.03, ry: 0.025, fuerza: 1.2, velocidad: 3 },
+        { tipo: "luz", x: 0.0425, y: 0.15, rx: 0.08, ry: 0.045, fuerza: 0.22, velocidad: 5.5, color: "#ff6a3a" },
+        { tipo: "luz", x: 0.06, y: 0.18, rx: 0.12, ry: 0.1, fuerza: 0.07, velocidad: 1.3, color: "#ff2a20" },
+        { tipo: "centelleo", x: 0.95, y: 0.25, rx: 0.06, ry: 0.2, fuerza: 0.6, velocidad: 0.8 },
+        { tipo: "centelleo", x: 0.03, y: 0.505, rx: 0.05, ry: 0.05, fuerza: 0.6, velocidad: 1.1 },
+        { tipo: "nube", x: 0.92, y: 0.715, rx: 0.1, ry: 0.105, fuerza: 0.4, velocidad: 0.4 },
+      ],
+    },
+  },
 ];
