@@ -576,7 +576,7 @@ a.flecha-siguiente:hover {
   bottom: calc(var(--barra) + var(--seguro-abajo) + 19%);
   margin: 0;
   padding: 10px 16px;
-  background: rgb(2 3 5 / 0.8);
+  background: rgb(2 3 5);
   color: var(--papel);
   font: italic 400 1rem / 1.2 var(--f-texto);
   white-space: nowrap;

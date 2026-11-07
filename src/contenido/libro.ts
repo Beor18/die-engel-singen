@@ -473,4 +473,50 @@ donde algunos comen y otros solo sirven.
       ],
     },
   },
+  {
+    id: "prohibido",
+    orden: 10,
+    tipo: "poema",
+    titulo: "PROHIBIDO",
+    imagen: {
+      src: "/libro/prohibido.png",
+      alt: "Una cortina de terciopelo rojo se abre hacia un salón en penumbra, con una pareja en sombras y una lámpara roja. A la derecha, una puerta entreabierta. En primer plano, un vaso y una rosa sobre una mesa.",
+    },
+    texto: `
+Me dijeron que no mirara.
+Miré.
+
+Que no tocara.
+Toqué.
+
+Que no lo deseara.
+
+Demasiado tarde.
+
+Ahora cierran las puertas
+y apagan las luces.
+
+Pero nadie se va.
+`,
+    significado: {
+      texto: `
+«Verboten» significa «prohibido»:
+aquello que todos condenan de día
+y desean cuando cae la noche.
+`,
+      enLaImagen: true,
+    },
+    tono: "#d61f2c",
+    clima: {
+      zonas: [
+        { tipo: "nube", x: 0.09, y: 0.25, rx: 0.15, ry: 0.24, fuerza: 0.5, velocidad: 0.6 },
+        { tipo: "luz", x: 0.903, y: 0.085, rx: 0.1, ry: 0.06, fuerza: 0.22, velocidad: 1.6, color: "#ff3a2a" },
+        { tipo: "luz", x: 0.87, y: 0.2, rx: 0.09, ry: 0.13, fuerza: 0.09, velocidad: 0.7, color: "#ff2020" },
+        { tipo: "luz", x: 0.86, y: 0.62, rx: 0.08, ry: 0.1, fuerza: 0.1, velocidad: 1.1, color: "#ff2a20" },
+        { tipo: "agua", x: 0.865, y: 0.7, rx: 0.065, ry: 0.14, fuerza: 0.7, velocidad: 0.6 },
+        { tipo: "agua", x: 0.18, y: 0.925, rx: 0.3, ry: 0.05, fuerza: 0.5, velocidad: 0.5 },
+        { tipo: "centelleo", x: 0.055, y: 0.8, rx: 0.07, ry: 0.05, fuerza: 0.6, velocidad: 1 },
+      ],
+    },
+  },
 ];
