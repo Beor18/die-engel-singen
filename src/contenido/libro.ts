@@ -561,4 +561,51 @@ cuando amanece y el amor comienza a hablar.
       ],
     },
   },
+  {
+    id: "el-rey-de-papel",
+    orden: 12,
+    tipo: "poema",
+    titulo: "EL REY DE PAPEL",
+    imagen: {
+      src: "/libro/el-rey-de-papel.png",
+      alt: "Un rey de espaldas, con corona de cartón y capa roja de terciopelo, levanta una mano frente a un público que aplaude en un teatro. Desde arriba, dos manos lo sostienen con hilos rojos.",
+    },
+    texto: `
+Quiere que lo miren,
+que repitan su nombre
+y aplaudan cada palabra.
+
+Levanta la mano.
+La multitud responde.
+
+Baja la mano.
+La multitud calla.
+
+La corona es de cartón.
+El rey, de papel.
+
+Y detrás del telón,
+alguien sostiene los hilos.
+`,
+    significado: {
+      texto: `
+«El rey de papel»: el poder de quien necesita que lo miren,
+mientras otros deciden qué mostrar.
+`,
+      enLaImagen: true,
+    },
+    tono: "#d9333f",
+    clima: {
+      particulas: [{ tipo: "polen", cantidad: 0.5 }],
+      zonas: [
+        { tipo: "nube", x: 0.08, y: 0.2, rx: 0.14, ry: 0.18, fuerza: 0.5, velocidad: 0.55 },
+        { tipo: "nube", x: 0.93, y: 0.2, rx: 0.13, ry: 0.18, fuerza: 0.5, velocidad: 0.5 },
+        { tipo: "viento", x: 0.21, y: 0.5, rx: 0.06, ry: 0.3, fuerza: 0.6, velocidad: 0.8 },
+        { tipo: "viento", x: 0.77, y: 0.42, rx: 0.05, ry: 0.22, fuerza: 0.6, velocidad: 0.75 },
+        { tipo: "luz", x: 0.02, y: 0.49, rx: 0.06, ry: 0.034, fuerza: 0.24, velocidad: 2.4, color: "#ff3a2a" },
+        { tipo: "luz", x: 0.97, y: 0.485, rx: 0.06, ry: 0.034, fuerza: 0.24, velocidad: 2.1, color: "#ff3a2a" },
+        { tipo: "luz", x: 0.46, y: 0.59, rx: 0.13, ry: 0.05, fuerza: 0.09, velocidad: 0.8, color: "#ffcc88" },
+      ],
+    },
+  },
 ];
