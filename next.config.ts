@@ -8,7 +8,7 @@ const config: NextConfig = {
     imageSizes: [48, 96, 128, 256, 384],
     qualities: [60, 75, 86],
     formats: ["image/webp"],
-    localPatterns: [{ pathname: "/libro/**" }],
+    localPatterns: [{ pathname: "/libro/**" }, { pathname: "/juego/**" }],
     minimumCacheTTL: 60 * 60 * 24 * 31,
   },
 };

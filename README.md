@@ -118,6 +118,41 @@ Decisiones que conviene conservar:
 - **Sin JavaScript** se ven la página y los enlaces a la anterior y la siguiente.
 - **El texto nunca se muestra dos veces.** Está en HTML solo para lectores de pantalla y buscadores, y a la vista únicamente si se abre el modo Texto.
 
+## El juego: La Voz
+
+En `/juego` está **La Voz**, un juego hecho con el libro. Sos la última luz encendida; las sombras se comieron los versos y los ángeles se quedaron callados. Cada poema es un nivel: caminás por casillas adentro de la pintura, rescatás sus estrofas, enfrentás a las sombras cantando y, al final, la página se revela entera con su significado. Cada página rescatada le suma una voz al coro.
+
+**Una página nueva es un nivel nuevo, sin tocar el juego.** Todo sale de `src/contenido/libro.ts`:
+
+| Del libro | En el juego |
+|-----------|-------------|
+| La imagen | El mapa: lo claro se camina y lo oscuro es pared. Al terminar, el mapa se convierte en la pintura |
+| Las estrofas | Los versos que hay que rescatar, entre 3 y 7 por nivel |
+| El significado | Lo que dice el ángel: se entiende a medida que aparecen los versos |
+| `luz` del clima | Faroles: recuperan la luz y guardan el lugar |
+| `agua` | Agua que no se puede cruzar |
+| `niebla`, `nube`, `humo` | Penumbra, donde pueden aparecer sombras |
+| `particulas` y `relampagos` | La lluvia, los pétalos, el polen y los relámpagos del nivel |
+| `tono` | El color de la página |
+| `alt` de la imagen | La descripción con que empieza el nivel |
+
+El mismo id genera siempre el mismo mapa. Los niveles se juegan en el orden del libro y la dificultad sube con el número de página.
+
+- **Controles:** flechas o WASD para caminar y Espacio para hablar o cantar. Esc pausa y M silencia. En celular hay un círculo para caminar, un botón ✦, y también se puede tocar adonde ir.
+- **Sonido:** todo se sintetiza en el navegador, sin archivos. Hay volumen general, música y efectos, y se guarda en el navegador junto con el progreso.
+- **Imágenes:** los retratos y la portada del juego están en `public/juego/` y se generaron con ChatGPT. La imagen para compartir, `/juego/compartir.jpg`, se arma al compilar.
+- **Pruebas:** con `/juego?prueba=1`, la consola tiene `__laVoz` con atajos para juntar los versos, pelear o revelar la página.
+
+```
+src/game/level.ts    Genera el mapa de un nivel a partir de su página
+src/game/engine.ts   Exploración, batallas, luces y revelación, en canvas
+src/game/audio.ts    Coro, música de batalla y efectos con Web Audio
+src/game/sprites.ts  Pixel art de la Voz, el ángel, las sombras y los faroles
+src/game/Game.tsx    Pantallas, diálogos, controles táctiles y sonido
+```
+
+El código del juego está en inglés; los textos que se ven, en castellano.
+
 ## Publicar
 
 El proyecto está en Vercel. Con el repositorio conectado, cada `git push` a `main` publica solo. También se puede publicar a mano con `vercel --prod`.

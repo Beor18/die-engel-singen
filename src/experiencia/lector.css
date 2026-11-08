@@ -770,6 +770,16 @@ a.flecha-siguiente:hover {
   padding-inline: 0;
 }
 
+.indice-juego {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+  padding-inline: 0;
+  text-decoration: underline;
+  text-decoration-color: var(--firulete);
+  text-underline-offset: 4px;
+}
+
 .indice-vista {
   display: none;
 }

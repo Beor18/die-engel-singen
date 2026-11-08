@@ -110,6 +110,9 @@ export function HojaIndice({
             ))}
           </ol>
           {children}
+          <Link href="/juego" className="boton-texto indice-juego" onClick={alCerrar}>
+            Jugar «La Voz», el juego del libro
+          </Link>
         </div>
         <div className="indice-vista" aria-hidden="true">
           <Image
