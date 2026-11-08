@@ -15,6 +15,8 @@ import type { LevelSource, Point } from "./types";
 
 export const COLS = 27;
 export const ROWS = 48;
+/** Size of a tile in world pixels. The world is drawn as pixel art at this scale. */
+export const TILE = 16;
 /** Each tile samples 4 x 4 points of the painting. */
 export const SUB = 4;
 export const SAMPLE_W = COLS * SUB;
@@ -322,7 +324,7 @@ export function generateMap(source: LevelSource, sample: Uint8ClampedArray, diff
     for (let x = 2; x < COLS - 2; x++) {
       let open = 0;
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (cells[at(x + dx, y + dy)] === FLOOR) open++;
-      if (open === 25 && r() < 0.09) cells[at(x, y)] = WALL;
+      if (open === 25 && r() < 0.05) cells[at(x, y)] = WALL;
     }
   }
 

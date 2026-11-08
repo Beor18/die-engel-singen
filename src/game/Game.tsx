@@ -466,7 +466,7 @@ function LevelScreen({
         <div className="nivel-carga" role="status">
           <p>Abriendo «{level.name}»</p>
           <div className="aviso-barra" />
-          <p className="nivel-carga-nota">Suele tardar un segundo.</p>
+          <p className="nivel-carga-nota">Suele tardar un par de segundos.</p>
         </div>
       )}
 

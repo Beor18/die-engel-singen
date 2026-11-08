@@ -1,3 +1,4 @@
+import { BAYER, WORLD_H, WORLD_W, buildWorldArt, fogTile, hexRgb, type WorldArt } from "./art";
 import { MODES, type AudioEngine, type Key } from "./audio";
 import {
   COLS,
@@ -5,8 +6,7 @@ import {
   ROWS,
   SAMPLE_H,
   SAMPLE_W,
-  SUB,
-  WALL,
+  TILE,
   WATER,
   at,
   findPath,
@@ -18,7 +18,7 @@ import {
   type Verse,
 } from "./level";
 import { createRng, hash, pick, type Rng } from "./rng";
-import { buildSprites, SHADOW_EYES, STAR, type Sprites } from "./sprites";
+import { buildSprites, drawSmoke, ellipse, LAMP_HEIGHT, SMOKE_EYES, type Sprites } from "./sprites";
 import type { BattleOption, BattleUI, Dir, LevelSource, Point, Speaker, UIState } from "./types";
 
 /**
@@ -27,7 +27,6 @@ import type { BattleOption, BattleUI, Dir, LevelSource, Point, Speaker, UIState 
  * renders as HTML (dialogue, battle menu, HUD), so text stays crisp and readable.
  */
 
-const TILE = 16;
 const STEP_TIME = 0.2;
 const TYPE_SPEED = 48;
 const DELTA: Record<Dir, Point> = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
@@ -93,6 +92,24 @@ type Battle = {
 };
 
 type Drop = { x: number; y: number; vx: number; vy: number; size: number; rot: number; spin: number; color: string; phase: number };
+type Glow = { x: number; y: number; r: number; a: number; c: readonly number[]; glow: number };
+type Knot = { x: number; y: number; px: number; py: number };
+
+/** Buffers for the light map, computed per world pixel on every frame. */
+type LightBuffers = {
+  w: number;
+  h: number;
+  intensity: Float32Array;
+  red: Float32Array;
+  green: Float32Array;
+  blue: Float32Array;
+  bloom: Float32Array;
+  shade: ImageData;
+  glow: ImageData;
+};
+
+const WARM = [1, 0.93, 0.8] as const;
+const BAND = 5;
 
 export type EngineOptions = {
   level: LevelSource;
@@ -123,6 +140,11 @@ function canvas(w: number, h: number) {
   return c;
 }
 
+/** A light's color as multipliers between 0 and 1, softened toward white. */
+function tint(hex: string, white = 0.45) {
+  return hexRgb(hex).map((v) => (v + (255 - v) * white) / 255);
+}
+
 /** Hides letters of a text, revealing more as `fraction` grows. */
 function veil(text: string, fraction: number, seed: number) {
   const letters: number[] = [];
@@ -143,6 +165,10 @@ export class Engine {
   private canvasEl: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private lightCanvas: HTMLCanvasElement | null = null;
+  private glowCanvas: HTMLCanvasElement | null = null;
+  private fogCanvas: HTMLCanvasElement | null = null;
+  private fogPattern: CanvasPattern | null = null;
+  private lightBuffers: LightBuffers | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private raf = 0;
   private session = 0;
@@ -156,9 +182,16 @@ export class Engine {
 
   private map!: GameMap;
   private sprites!: Sprites;
-  private floor!: HTMLCanvasElement;
-  private walls!: HTMLCanvasElement;
+  private art!: WorldArt;
+  private fog!: HTMLCanvasElement;
   private painting!: HTMLImageElement;
+  private rainy = false;
+  /** How much of each tile the player has seen: explored places stay faintly visible. */
+  private seen = new Float32Array(COLS * ROWS);
+  private scarf: Knot[] = [];
+  private splashes: { x: number; y: number; t: number }[] = [];
+  private splashTimer = 0;
+  private lampTints = new Map<string, number[]>();
   private blurred!: HTMLCanvasElement;
   private creatures: { shadow: HTMLCanvasElement | null; guardian: HTMLCanvasElement | null } = { shadow: null, guardian: null };
   private key!: Key;
@@ -221,6 +254,9 @@ export class Engine {
     this.canvasEl = el;
     this.ctx = el.getContext("2d");
     this.lightCanvas = canvas(4, 4);
+    this.glowCanvas = canvas(4, 4);
+    this.fogCanvas = canvas(4, 4);
+    this.fogPattern = null;
     this.font = getComputedStyle(document.body).fontFamily || this.font;
     this.resize();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -320,6 +356,19 @@ export class Engine {
       }
     },
     reveal: () => this.startReveal(),
+    art: () => ({ ground: this.art.ground.toDataURL(), walls: this.art.walls.toDataURL() }),
+    sprites: () => {
+      const sp = this.sprites;
+      const list = [...sp.voice.down, ...sp.voice.up, ...sp.voice.left, ...sp.voice.right, ...sp.angel, sp.feather, sp.lamp("#ffd08a", true, 0), sp.lamp("#ffd08a", false, 0), sp.starRed, sp.starBig, sp.starGold];
+      const sheet = canvas(list.reduce((w, c) => w + c.width + 2, 0), 28);
+      const g = sheet.getContext("2d")!;
+      let x = 0;
+      for (const c of list) {
+        g.drawImage(c, x, 0);
+        x += c.width + 2;
+      }
+      return sheet.toDataURL();
+    },
     state: () => ({ mode: this.mode, player: { x: this.player.x, y: this.player.y }, light: this.light, verses: this.collected.size }),
   };
 
@@ -341,8 +390,17 @@ export class Engine {
       this.sprites = buildSprites();
       void this.loadCreature("/juego/sombra.jpg", "shadow");
       void this.loadCreature("/juego/guardian.jpg", "guardian");
-      this.buildFloor(data);
-      this.buildWalls(data);
+      const particles = this.o.level.weather.particulas ?? [];
+      this.rainy = particles.some((p) => p.tipo === "lluvia");
+      this.art = buildWorldArt(image, this.map, {
+        seed: hash(this.o.level.id),
+        tone: this.o.level.tone,
+        rain: this.rainy,
+        petals: particles.some((p) => p.tipo === "petalos"),
+      });
+      this.fog = fogTile(hash(this.o.level.id) ^ 0x6f);
+      this.seen.fill(0);
+      this.scarf = [];
       this.blurred = canvas(27, 48);
       const bctx = this.blurred.getContext("2d")!;
       bctx.imageSmoothingQuality = "high";
@@ -372,7 +430,7 @@ export class Engine {
       this.key = this.musicalKey();
       const audio = this.o.audio;
       audio.startChoir(this.key, 1);
-      audio.setRain(Boolean(this.o.level.weather.particulas?.some((p) => p.tipo === "lluvia")));
+      audio.setRain(this.rainy);
       this.initWeather();
 
       this.mode = "intro";
@@ -421,116 +479,6 @@ export class Engine {
     const minor = mode[2] === 3;
     const progression = minor ? pick(r, [[0, 5, 3, 4], [0, 3, 5, 4], [0, 6, 5, 4], [0, 5, 2, 4]]) : pick(r, [[0, 4, 5, 3], [0, 3, 4, 0], [0, 5, 3, 4]]);
     return { root: pick(r, roots), mode, progression };
-  }
-
-  private buildFloor(sample: Uint8ClampedArray) {
-    const W = COLS * TILE;
-    const H = ROWS * TILE;
-    this.floor = canvas(W, H);
-    const ctx = this.floor.getContext("2d")!;
-    const img = ctx.createImageData(W, H);
-    const cells = this.map.cells;
-    const k = TILE / SUB;
-    for (let py = 0; py < H; py++) {
-      for (let px = 0; px < W; px++) {
-        const s = ((((py / k) | 0) * SAMPLE_W + ((px / k) | 0)) * 4) | 0;
-        let r = sample[s];
-        let g = sample[s + 1];
-        let b = sample[s + 2];
-        const tx = (px / TILE) | 0;
-        const ty = (py / TILE) | 0;
-        const cell = cells[at(tx, ty)];
-        const lx = px % TILE;
-        const ly = py % TILE;
-        if (cell === GLOOM) {
-          r = r * 0.55 + 14;
-          g = g * 0.5 + 6;
-          b = b * 0.55 + 22;
-        } else if (cell === WATER) {
-          r = r * 0.45 + 6;
-          g = g * 0.5 + 16;
-          b = b * 0.55 + 32;
-        } else if (cell !== WALL) {
-          r = r * 0.98 + 9;
-          g = g * 0.98 + 9;
-          b = b * 0.98 + 10;
-        }
-        if (cell !== WALL) {
-          let f = 1;
-          if (lx === 0 || ly === 0) f *= 0.8;
-          if (ty > 0 && cells[at(tx, ty - 1)] === WALL && ly < 4) f *= 0.45 + ly * 0.12;
-          r *= f;
-          g *= f;
-          b *= f;
-        }
-        const o = (py * W + px) * 4;
-        img.data[o] = r;
-        img.data[o + 1] = g;
-        img.data[o + 2] = b;
-        img.data[o + 3] = 255;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-  }
-
-  private buildWalls(sample: Uint8ClampedArray) {
-    const W = COLS * TILE;
-    const H = ROWS * TILE;
-    this.walls = canvas(W, H);
-    const ctx = this.walls.getContext("2d")!;
-    const img = ctx.createImageData(W, H);
-    const cells = this.map.cells;
-    const isWall = (x: number, y: number) => !inside(x, y) || cells[at(x, y)] === WALL;
-    const k = TILE / SUB;
-    for (let ty = 0; ty < ROWS; ty++) {
-      for (let tx = 0; tx < COLS; tx++) {
-        if (!isWall(tx, ty)) continue;
-        let br = 0;
-        let bg = 0;
-        let bb = 0;
-        for (let sy = 0; sy < SUB; sy++) {
-          for (let sx = 0; sx < SUB; sx++) {
-            const s = ((ty * SUB + sy) * SAMPLE_W + tx * SUB + sx) * 4;
-            br += sample[s];
-            bg += sample[s + 1];
-            bb += sample[s + 2];
-          }
-        }
-        const n = SUB * SUB;
-        const base = [br / n, bg / n, bb / n];
-        const below = isWall(tx, ty + 1);
-        const above = isWall(tx, ty - 1);
-        const left = isWall(tx - 1, ty);
-        const right = isWall(tx + 1, ty);
-        for (let ly = 0; ly < TILE; ly++) {
-          for (let lx = 0; lx < TILE; lx++) {
-            const px = tx * TILE + lx;
-            const py = ty * TILE + ly;
-            const s = ((((py / k) | 0) * SAMPLE_W + ((px / k) | 0)) * 4) | 0;
-            const top = [0, 1, 2].map((i) => base[i] * 0.26 + sample[s + i] * 0.08 + 7);
-            let c: number[];
-            if (!below && ly >= 9) {
-              // Front face: two rows of bricks under a lit ledge.
-              const row = ly < 13 ? 0 : 1;
-              const mortar = ly === 13 || (lx + row * 4) % 8 === 7;
-              c = ly === 9 ? top.map((v) => v * 1.9 + 14) : top.map((v) => v * (mortar ? 0.38 : 0.72 - (ly - 10) * 0.03));
-            } else {
-              c = top.map((v) => v * (0.92 + (((lx * 7 + ly * 13 + tx * 3 + ty * 5) % 5) - 2) * 0.03));
-              if (!above && ly === 0) c = c.map((v) => v * 2.1 + 18);
-              else if (!above && ly === 1) c = c.map((v) => v * 1.35 + 6);
-              else if (!left && lx === 0) c = c.map((v) => v * 1.5 + 8);
-              else if (!right && lx === TILE - 1) c = c.map((v) => v * 0.7);
-            }
-            const o = (py * W + px) * 4;
-            img.data[o] = c[0];
-            img.data[o + 1] = c[1];
-            img.data[o + 2] = c[2];
-            img.data[o + 3] = 255;
-          }
-        }
-      }
-    }
-    ctx.putImageData(img, 0, 0);
   }
 
   // ----- Input ---------------------------------------------------------------
@@ -620,6 +568,10 @@ export class Engine {
       }
     }
     this.updateWeather(dt);
+    if (this.mode !== "battle" && this.mode !== "reveal") {
+      this.updateSeen();
+      this.updateScarf(dt);
+    }
 
     switch (this.mode) {
       case "intro":
@@ -665,6 +617,68 @@ export class Engine {
   private playerPos() {
     const p = this.player;
     return { x: lerp(p.fromX, p.x, p.t), y: lerp(p.fromY, p.y, p.t) };
+  }
+
+  /** Marks what the light reaches as explored. Lit lamps keep their surroundings in memory too. */
+  private updateSeen() {
+    const mark = (cx: number, cy: number, r: number) => {
+      for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+        for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+          if (!inside(x, y)) continue;
+          const d = Math.hypot(x - cx, y - cy) / r;
+          if (d < 1) this.seen[at(x, y)] = Math.max(this.seen[at(x, y)], Math.min(1, (1 - d) * 2.5));
+        }
+      }
+    };
+    const pos = this.playerPos();
+    mark(pos.x, pos.y, 1.6 + this.light * 0.55);
+    for (const lamp of this.visitedLamps) mark(lamp.x, lamp.y, 3);
+  }
+
+  /** Where the scarf is tied: the neck, which moves with the direction the Voice faces. */
+  private scarfAnchor() {
+    const pos = this.playerPos();
+    const d = this.player.dir;
+    return { x: pos.x * TILE + (d === "left" ? 11 : d === "right" ? 5 : 8), y: pos.y * TILE - 8 + (d === "up" ? 13 : 11) };
+  }
+
+  /** The red scarf follows the Voice like a short rope, with gravity and a bit of wind. */
+  private updateScarf(dt: number) {
+    const a = this.scarfAnchor();
+    if (!this.scarf.length) this.scarf = Array.from({ length: 5 }, (_, i) => ({ x: a.x, y: a.y + i * 2, px: a.x, py: a.y + i * 2 }));
+    const knots = this.scarf;
+    knots[0].x = knots[0].px = a.x;
+    knots[0].y = knots[0].py = a.y;
+    const dt2 = dt * dt;
+    const wind = this.rainy ? -30 : 0;
+    for (let i = 1; i < knots.length; i++) {
+      const k = knots[i];
+      const vx = (k.x - k.px) * 0.9;
+      const vy = (k.y - k.py) * 0.9;
+      k.px = k.x;
+      k.py = k.y;
+      k.x += vx + (wind + Math.sin(this.time * 4.3 + i * 0.9) * 26) * dt2;
+      k.y += vy + 90 * dt2;
+    }
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 1; i < knots.length; i++) {
+        const prev = knots[i - 1];
+        const k = knots[i];
+        const dx = k.x - prev.x;
+        const dy = k.y - prev.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d > 2.4) {
+          k.x = prev.x + (dx / d) * 2.4;
+          k.y = prev.y + (dy / d) * 2.4;
+        }
+      }
+    }
+  }
+
+  /** The little light that floats around the Voice. It dims as the Voice loses light. */
+  private orbPos(t = this.time) {
+    const pos = this.playerPos();
+    return { x: pos.x * TILE + 8 + Math.cos(t * 1.6) * 9, y: pos.y * TILE - 11 + Math.sin(t * 3.2) * 2 };
   }
 
   private isAngel(p: Point) {
@@ -1430,6 +1444,21 @@ export class Engine {
         this.drops[i] = this.newDrop(kind, false);
       }
     }
+    // Rain splashes on the visible ground.
+    for (const s of this.splashes) s.t += dt;
+    this.splashes = this.splashes.filter((s) => s.t < 0.3);
+    if (this.rainy && this.map && (this.mode === "explore" || this.mode === "dialogue" || this.mode === "intro")) {
+      const { s, ox, oy } = this.view();
+      this.splashTimer -= dt;
+      while (this.splashTimer < 0) {
+        this.splashTimer += 0.03;
+        const x = Math.floor((-ox + this.rng() * this.cw) / s);
+        const y = Math.floor((-oy + this.rng() * this.ch) / s);
+        const tx = Math.floor(x / TILE);
+        const ty = Math.floor(y / TILE);
+        if (inside(tx, ty) && walkable(this.map.cells[at(tx, ty)])) this.splashes.push({ x, y, t: 0 });
+      }
+    }
   }
 
   // ----- Rendering -----------------------------------------------------------
@@ -1446,10 +1475,6 @@ export class Engine {
     const tileCss = clamp(Math.min(rect.width, rect.height) / 10, 34, 64);
     this.scale = Math.max(2, Math.round((tileCss * this.dpr) / TILE));
     this.bottomInset = this.o.touch ? Math.min(170, rect.height * 0.22) * this.dpr : 0;
-    if (this.lightCanvas) {
-      this.lightCanvas.width = Math.ceil(this.cw / 4);
-      this.lightCanvas.height = Math.ceil(this.ch / 4);
-    }
     if (this.mode !== "loading") this.initWeather();
   }
 
@@ -1523,7 +1548,7 @@ export class Engine {
 
     ctx.setTransform(s, 0, 0, s, ox, oy);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.floor, 0, 0);
+    ctx.drawImage(this.art.ground, 0, 0);
 
     // Visible tiles, to animate only what is on screen.
     const x0 = Math.max(0, Math.floor(-ox / s / TILE) - 1);
@@ -1533,45 +1558,29 @@ export class Engine {
 
     if (actorsAlpha > 0) {
       ctx.globalAlpha = actorsAlpha;
-      for (let y = y0; y <= y1; y++) {
-        for (let x = x0; x <= x1; x++) {
-          const c = m.cells[at(x, y)];
-          if (c === WATER) {
-            const k = Math.sin(t * 2 + x * 1.3 + y * 0.7);
-            ctx.fillStyle = `rgba(170,205,240,${0.12 + k * 0.08})`;
-            ctx.fillRect(x * TILE + 3 + ((t * 4 + y * 3) % 8), y * TILE + 5, 5, 1);
-            ctx.fillRect(x * TILE + 9 - ((t * 3 + x * 2) % 7), y * TILE + 11, 4, 1);
-          } else if (c === GLOOM) {
-            const h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
-            const dx = (h % 9) + Math.sin(t * 0.7 + (h % 13)) * 3;
-            const dy = ((h >> 4) % 9) + Math.cos(t * 0.55 + (h % 11)) * 2.5;
-            ctx.fillStyle = `rgba(12,4,20,${0.3 + 0.14 * Math.sin(t * 1.1 + (h % 17))})`;
-            ctx.beginPath();
-            ctx.arc(x * TILE + 3 + dx, y * TILE + 3 + dy, 4 + (h % 4), 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
+      this.drawWater(ctx, x0, y0, x1, y1, t);
+      this.drawFog(ctx, s, ox, oy);
       for (const f of m.fogs) {
         const fx = f.x * TILE + Math.sin(t * 0.3 + f.y) * TILE * 0.6;
         const fy = f.y * TILE;
         const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, Math.max(f.rx, f.ry) * TILE);
         const [r, gg, bb] = rgb(f.color);
-        g.addColorStop(0, `rgba(${r},${gg},${bb},0.14)`);
+        g.addColorStop(0, `rgba(${r},${gg},${bb},0.1)`);
         g.addColorStop(1, `rgba(${r},${gg},${bb},0)`);
         ctx.fillStyle = g;
         ctx.fillRect(fx - f.rx * TILE * 1.2, fy - f.ry * TILE * 1.2, f.rx * TILE * 2.4, f.ry * TILE * 2.4);
       }
-
       // The red star where the page begins, and the title above.
-      this.drawStar(ctx, (m.start.x + 0.5) * TILE, (m.start.y + 0.5) * TILE, 0.8, "#98121a", 0);
+      const star = this.sprites.starRed;
+      ctx.drawImage(star, m.start.x * TILE + 8 - (star.width >> 1), m.start.y * TILE + 8 - (star.height >> 1));
       this.drawPortal(ctx, t);
+      this.drawSplashes(ctx);
       ctx.globalAlpha = 1;
     }
 
     if (wallsAlpha > 0) {
       ctx.globalAlpha = wallsAlpha;
-      ctx.drawImage(this.walls, 0, reveal < 0 ? 0 : (1 - wallsAlpha) * 6);
+      ctx.drawImage(this.art.walls, 0, reveal < 0 ? 0 : Math.round((1 - wallsAlpha) * 6));
       ctx.globalAlpha = 1;
     }
 
@@ -1584,7 +1593,7 @@ export class Engine {
     if (paint > 0) {
       ctx.imageSmoothingEnabled = true;
       ctx.globalAlpha = paint;
-      ctx.drawImage(this.painting, 0, 0, COLS * TILE, ROWS * TILE);
+      ctx.drawImage(this.painting, 0, 0, WORLD_W, WORLD_H);
       ctx.globalAlpha = 1;
       ctx.imageSmoothingEnabled = false;
     }
@@ -1596,197 +1605,485 @@ export class Engine {
       ctx.setTransform(s, 0, 0, s, ox, oy);
       for (const sh of this.shadows) {
         if (!sh.alive) continue;
-        const sx = lerp(sh.fromX, sh.x, sh.t) * TILE;
-        const sy = lerp(sh.fromY, sh.y, sh.t) * TILE - 2 + Math.sin(t * 3 + sh.phase);
-        const blink = Math.sin(t * 0.9 + sh.phase * 3) > 0.96 ? 0.2 : 1;
-        for (const [ex, ey] of SHADOW_EYES) {
-          ctx.fillStyle = `rgba(255,42,54,${0.9 * actorsAlpha})`;
-          ctx.fillRect(sx + ex - 1, sy + ey - 0.5 * blink, 1.6, 1.2 * blink);
-        }
+        const sx = Math.round(lerp(sh.fromX, sh.x, sh.t) * TILE + 8);
+        const sy = Math.round(lerp(sh.fromY, sh.y, sh.t) * TILE + 13 + Math.cos(t * 1.7 + sh.phase) * 0.9);
+        const blink = Math.sin(t * 0.9 + sh.phase * 3) > 0.96;
+        const a = actorsAlpha * (sh.stunned > 0 ? 0.45 : 1);
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = `rgba(255,40,52,${0.22 * a})`;
+        for (const [ex, ey] of SMOKE_EYES) ctx.fillRect(sx + ex - 1, sy + ey - 1, 4, 3);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = `rgba(255,52,62,${0.95 * a})`;
+        for (const [ex, ey] of SMOKE_EYES) ctx.fillRect(sx + ex, sy + ey + (blink ? 0.6 : 0), 2, blink ? 0.4 : 1);
       }
     }
 
-    this.renderWeather(ctx, reveal);
+    this.renderWeather(ctx, reveal, s, ox, oy);
   }
 
-  private drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, glow: number) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(size, size);
-    if (glow > 0) {
-      ctx.shadowColor = color;
-      ctx.shadowBlur = glow;
+  private drawWater(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, t: number) {
+    const m = this.map;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (m.cells[at(x, y)] !== WATER) continue;
+        const h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
+        for (let k = 0; k < 2; k++) {
+          const phase = (t * (0.3 + (h % 7) * 0.04) + k * 0.5 + (h % 13) / 13) % 1;
+          ctx.fillStyle = `rgba(185,215,240,${0.5 * Math.sin(phase * Math.PI)})`;
+          ctx.fillRect(x * TILE + ((h >> (k * 4)) % 9) + Math.round(phase * 4), y * TILE + 4 + k * 6 + ((h >> 8) % 3), 2 + k, 1);
+        }
+      }
     }
-    ctx.fillStyle = color;
-    ctx.fill(new Path2D(STAR));
-    ctx.restore();
+    for (const p of this.art.puddles) {
+      const phase = (t * 0.8 + p.seed / 1000) % 1;
+      const r = 1 + phase * p.rx;
+      ctx.fillStyle = `rgba(190,215,235,${0.55 * (1 - phase)})`;
+      for (let a = 0; a < 14; a++) {
+        const ang = (a / 14) * Math.PI * 2;
+        ctx.fillRect(Math.round(p.x + Math.cos(ang) * r), Math.round(p.y + (Math.sin(ang) * r * p.ry) / p.rx), 1, 1);
+      }
+    }
+  }
+
+  /** Fog that drifts over the gloom: a repeating texture, cut to the shape of the gloom. */
+  private drawFog(ctx: CanvasRenderingContext2D, s: number, ox: number, oy: number) {
+    const fc = this.fogCanvas;
+    if (!fc) return;
+    const fx0 = Math.max(0, Math.floor(-ox / s));
+    const fy0 = Math.max(0, Math.floor(-oy / s));
+    const w = Math.min(WORLD_W, Math.ceil((this.cw - ox) / s)) - fx0;
+    const h = Math.min(WORLD_H, Math.ceil((this.ch - oy) / s)) - fy0;
+    if (w <= 0 || h <= 0) return;
+    if (fc.width < w || fc.height < h) {
+      fc.width = Math.max(fc.width, w);
+      fc.height = Math.max(fc.height, h);
+      this.fogPattern = null;
+    }
+    const f = fc.getContext("2d")!;
+    this.fogPattern ??= f.createPattern(this.fog, "repeat");
+    if (!this.fogPattern) return;
+    f.setTransform(1, 0, 0, 1, 0, 0);
+    f.globalCompositeOperation = "source-over";
+    f.clearRect(0, 0, w, h);
+    f.fillStyle = this.fogPattern;
+    const wrap = (v: number) => (((v % 64) + 64) % 64) - 64;
+    for (const [speed, alpha, offset] of [
+      [4, 1, 0],
+      [-2.6, 0.7, 23],
+    ]) {
+      f.globalAlpha = alpha;
+      f.setTransform(1, 0, 0, 1, wrap(Math.round(this.time * speed) + offset - fx0), wrap(Math.round(this.time * speed * 0.35) + offset - fy0));
+      f.fillRect(0, 0, w + 128, h + 128);
+    }
+    f.setTransform(1, 0, 0, 1, 0, 0);
+    f.globalAlpha = 1;
+    f.globalCompositeOperation = "destination-in";
+    f.drawImage(this.art.gloom, fx0, fy0, w, h, 0, 0, w, h);
+    f.globalCompositeOperation = "source-over";
+    ctx.drawImage(fc, 0, 0, w, h, fx0, fy0, w, h);
+  }
+
+  private drawSplashes(ctx: CanvasRenderingContext2D) {
+    for (const sp of this.splashes) {
+      ctx.fillStyle = `rgba(205,222,238,${0.65 * (1 - sp.t / 0.3)})`;
+      if (sp.t < 0.08) {
+        ctx.fillRect(sp.x, sp.y - 1, 1, 1);
+        continue;
+      }
+      const r = sp.t < 0.18 ? 1 : 2;
+      ctx.fillRect(sp.x - r, sp.y, 1, 1);
+      ctx.fillRect(sp.x + r, sp.y, 1, 1);
+      if (r === 1) ctx.fillRect(sp.x, sp.y - 1, 1, 1);
+    }
   }
 
   private drawPortal(ctx: CanvasRenderingContext2D, t: number) {
     const p = this.map.portal;
-    const x = (p.x + 0.5) * TILE;
-    const y = (p.y + 0.5) * TILE;
+    const x = p.x * TILE + 8;
+    const y = p.y * TILE + 8;
     if (!this.portalOpen) {
-      ctx.strokeStyle = "rgba(152,18,26,0.7)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(x, y, 12 + Math.sin(t * 2) * 0.6, 0, Math.PI * 2);
-      ctx.stroke();
-      this.drawStar(ctx, x, y, 1.1, "#98121a", 0);
+      // Embers turning around the closed star.
+      for (let k = 0; k < 12; k++) {
+        const a = t * 0.6 + (k / 12) * Math.PI * 2;
+        ctx.fillStyle = k % 2 ? "rgba(199,36,47,0.85)" : "rgba(152,18,26,0.55)";
+        ctx.fillRect(Math.round(x + Math.cos(a) * 13), Math.round(y + Math.sin(a) * 7), 1, 1);
+      }
+      const star = this.sprites.starBig;
+      ctx.drawImage(star, x - (star.width >> 1), y - (star.height >> 1));
       return;
     }
     const pulse = (Math.sin(t * 2.4) + 1) / 2;
-    const g = ctx.createLinearGradient(x, y - 70, x, y + 8);
-    g.addColorStop(0, "rgba(255,241,194,0)");
-    g.addColorStop(1, `rgba(255,241,194,${0.35 + pulse * 0.2})`);
-    ctx.fillStyle = g;
-    ctx.fillRect(x - 9, y - 70, 18, 78);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(t * 0.6);
-    ctx.translate(-x, -y);
-    this.drawStar(ctx, x, y, 1.4 + pulse * 0.2, "#fff1c2", 0);
-    ctx.restore();
+    // A beam of light in stepped bands, brighter at the core.
+    for (let k = 0; k < 4; k++) {
+      const half = 8 - k * 2;
+      ctx.fillStyle = `rgba(255,241,194,${(0.1 + k * 0.07) * (0.7 + pulse * 0.3)})`;
+      ctx.fillRect(x - half, y - 90, half * 2, 96);
+    }
+    for (let k = 0; k < 10; k++) {
+      const s = (t * 0.45 + k / 10) % 1;
+      ctx.fillStyle = `rgba(255,246,216,${1 - s})`;
+      ctx.fillRect(Math.round(x + Math.sin(k * 2.1 + t) * 6), Math.round(y - s * 70), 1, 1);
+    }
+    const star = this.sprites.starGold;
+    ctx.drawImage(star, x - (star.width >> 1), y - (star.height >> 1) + Math.round(Math.sin(t * 2) * 2));
   }
 
   private drawActors(ctx: CanvasRenderingContext2D, t: number) {
     const m = this.map;
+    const sp = this.sprites;
+    const shade = "rgba(0,0,0,0.4)";
     const items: { y: number; draw: () => void }[] = [];
+    const flame = Math.floor(t * 7) % 2;
     for (const l of m.lamps) {
-      items.push({ y: l.y, draw: () => ctx.drawImage(this.sprites.lamp(l.color), l.x * TILE, l.y * TILE - 4) });
+      const lit = this.visitedLamps.has(l);
+      items.push({
+        y: l.y,
+        draw: () => {
+          ctx.drawImage(ellipse(4, 1, shade), l.x * TILE + 4, l.y * TILE + 14);
+          ctx.drawImage(sp.lamp(l.color, lit, flame), l.x * TILE + 3, l.y * TILE + 16 - LAMP_HEIGHT);
+        },
+      });
     }
     for (const v of m.verses) {
       if (this.collected.has(v.index)) continue;
-      const bob = Math.sin(t * 2.2 + v.index) * 1.5;
-      items.push({ y: v.y, draw: () => ctx.drawImage(this.sprites.feather, v.x * TILE + 3, v.y * TILE + 1 + bob) });
+      const bob = Math.round(Math.sin(t * 2.2 + v.index) * 1.5);
+      items.push({
+        y: v.y,
+        draw: () => {
+          ctx.drawImage(ellipse(3, 1, "rgba(255,226,150,0.3)"), v.x * TILE + 5, v.y * TILE + 13);
+          ctx.drawImage(sp.feather, v.x * TILE + 4, v.y * TILE - 1 + bob);
+          for (let k = 0; k < 3; k++) {
+            const s = (t * 0.8 + k / 3 + v.index * 0.37) % 1;
+            ctx.fillStyle = `rgba(255,246,216,${Math.sin(s * Math.PI)})`;
+            ctx.fillRect(v.x * TILE + 8 + Math.round(Math.sin(k * 2.7 + v.index) * 6), v.y * TILE + 10 - Math.round(s * 14), 1, 1);
+          }
+        },
+      });
     }
-    items.push({ y: m.angel.y, draw: () => ctx.drawImage(this.sprites.angel, m.angel.x * TILE, m.angel.y * TILE - 3 + Math.sin(t * 1.3)) });
+    const a = m.angel;
+    const flap = Math.sin(t * 2.6) > 0 ? 1 : 0;
+    const hover = Math.round(Math.sin(t * 1.3) * 1.5);
+    items.push({
+      y: a.y,
+      draw: () => {
+        ctx.drawImage(ellipse(5, 1, shade), a.x * TILE + 3, a.y * TILE + 14);
+        ctx.drawImage(sp.angel[flap], a.x * TILE - 4, a.y * TILE - 13 + hover);
+      },
+    });
     for (const sh of this.shadows) {
       if (!sh.alive) continue;
-      const sx = lerp(sh.fromX, sh.x, sh.t);
-      const sy = lerp(sh.fromY, sh.y, sh.t);
-      const frame = this.sprites.shadow[Math.floor(t * 3 + sh.phase) % 2];
+      const ty = lerp(sh.fromY, sh.y, sh.t);
+      const sx = Math.round(lerp(sh.fromX, sh.x, sh.t) * TILE + 8);
+      const sy = Math.round(ty * TILE + 13);
       items.push({
-        y: sy,
+        y: ty,
         draw: () => {
-          ctx.globalAlpha *= sh.stunned > 0 ? 0.55 : 0.92;
-          ctx.drawImage(frame, sx * TILE, sy * TILE - 2 + Math.sin(t * 3 + sh.phase));
-          ctx.globalAlpha /= sh.stunned > 0 ? 0.55 : 0.92;
+          ctx.drawImage(ellipse(5, 1, "rgba(0,0,0,0.5)"), sx - 5, sy + 1);
+          const alpha = ctx.globalAlpha;
+          ctx.globalAlpha = alpha * (sh.stunned > 0 ? 0.5 : 0.96);
+          drawSmoke(ctx, sx, sy, t, sh.phase, sh.stunned > 0 ? 0.3 : 1);
+          ctx.globalAlpha = alpha;
         },
       });
     }
     const p = this.player;
     const pos = this.playerPos();
-    const frames = this.sprites.voice[p.dir];
-    const frame = p.moving ? frames[1 + (Math.floor(this.walkClock / 0.13) % 2)] : frames[0];
+    const frames = sp.voice[p.dir];
+    const step = p.moving ? Math.floor(this.walkClock / 0.12) % 4 : 0;
+    const frame = step === 1 ? frames[1] : step === 3 ? frames[2] : frames[0];
+    const bob = step === 1 || step === 3 ? -1 : 0;
     const blinking = this.invulnerable > 0 && Math.floor(t * 10) % 2 === 0;
+    const px = Math.round(pos.x * TILE);
+    const py = Math.round(pos.y * TILE);
     items.push({
       y: pos.y,
       draw: () => {
-        if (!blinking) ctx.drawImage(frame, Math.round(pos.x * TILE), Math.round(pos.y * TILE - 3 + (p.moving ? 1 : 0)));
+        ctx.drawImage(ellipse(5, 1, shade), px + 3, py + 14);
+        if (blinking) return;
+        if (p.dir === "down") this.drawScarf(ctx);
+        ctx.drawImage(frame, px, py - 8 + bob);
+        if (p.dir !== "down") this.drawScarf(ctx);
       },
     });
-    items.sort((a, b) => a.y - b.y);
+    items.sort((i, j) => i.y - j.y);
     for (const it of items) it.draw();
+    this.drawOrb(ctx);
   }
 
+  private drawScarf(ctx: CanvasRenderingContext2D) {
+    const knots = this.scarf;
+    for (let i = 0; i < knots.length - 1; i++) {
+      const a = knots[i];
+      const b = knots[i + 1];
+      ctx.fillStyle = i < 2 ? "#c7242f" : "#8a0f18";
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y)));
+      for (let k = 0; k <= steps; k++) {
+        ctx.fillRect(Math.round(a.x + ((b.x - a.x) * k) / steps), Math.round(a.y + ((b.y - a.y) * k) / steps), i < 2 ? 2 : 1, 1);
+      }
+    }
+  }
+
+  private drawOrb(ctx: CanvasRenderingContext2D) {
+    const o = this.orbPos();
+    const x = Math.round(o.x);
+    const y = Math.round(o.y);
+    const k = 0.4 + 0.6 * (this.light / this.o.maxLight);
+    for (let i = 1; i <= 2; i++) {
+      const trail = this.orbPos(this.time - i * 0.07);
+      ctx.fillStyle = `rgba(255,217,138,${(0.5 - i * 0.18) * k})`;
+      ctx.fillRect(Math.round(trail.x), Math.round(trail.y), 1, 1);
+    }
+    ctx.fillStyle = `rgba(255,217,138,${0.85 * k})`;
+    ctx.fillRect(x - 1, y, 4, 2);
+    ctx.fillRect(x, y - 1, 2, 4);
+    ctx.fillStyle = `rgba(255,251,232,${k})`;
+    ctx.fillRect(x, y, 2, 2);
+  }
+
+  private ensureLight(w: number, h: number) {
+    let b = this.lightBuffers;
+    if (!b || b.w !== w || b.h !== h) {
+      const n = w * h;
+      b = {
+        w,
+        h,
+        intensity: new Float32Array(n),
+        red: new Float32Array(n),
+        green: new Float32Array(n),
+        blue: new Float32Array(n),
+        bloom: new Float32Array(n),
+        shade: new ImageData(w, h),
+        glow: new ImageData(w, h),
+      };
+      this.lightBuffers = b;
+      for (const c of [this.lightCanvas, this.glowCanvas]) {
+        if (c && (c.width < w || c.height < h)) {
+          c.width = Math.max(c.width, w);
+          c.height = Math.max(c.height, h);
+        }
+      }
+    }
+    return b;
+  }
+
+  private lampTint(color: string) {
+    let c = this.lampTints.get(color);
+    if (!c) {
+      c = tint(color);
+      this.lampTints.set(color, c);
+    }
+    return c;
+  }
+
+  /**
+   * The light map, one value per world pixel: each light adds warmth around it,
+   * the rest falls to a dim moonlight, brighter where the Voice has already been.
+   * Light is reduced to a few bands with ordered dithering, as in pixel art, and
+   * then multiplied over the world. A second pass adds the glow of the lights.
+   */
   private renderLighting(ctx: CanvasRenderingContext2D, s: number, ox: number, oy: number, reveal: number) {
     const lc = this.lightCanvas;
-    if (!lc) return;
-    const l = lc.getContext("2d")!;
+    const gc = this.glowCanvas;
+    if (!lc || !gc) return;
     const t = this.time;
     const m = this.map;
     const darkMul = reveal < 0 ? 1 : 1 - ease(clamp(reveal / 2.2));
     const dark = m.darkness * darkMul * (1 - this.flash * 0.8);
-    l.globalCompositeOperation = "source-over";
-    l.clearRect(0, 0, lc.width, lc.height);
     if (dark <= 0.01) return;
-    l.fillStyle = `rgba(2,3,8,${dark})`;
-    l.fillRect(0, 0, lc.width, lc.height);
-    l.globalCompositeOperation = "destination-out";
 
-    const lights: { x: number; y: number; r: number; a: number; color?: string; glow?: number }[] = [];
+    // The part of the world on screen, coarser while the camera zooms out.
+    const k = s >= 2.5 ? 1 : 2;
+    const wx0 = Math.max(-k, Math.floor(-ox / s / k) * k);
+    const wy0 = Math.max(-k, Math.floor(-oy / s / k) * k);
+    const wx1 = Math.min(WORLD_W + k, Math.ceil((this.cw - ox) / s));
+    const wy1 = Math.min(WORLD_H + k, Math.ceil((this.ch - oy) / s));
+    const w = Math.ceil((wx1 - wx0) / k);
+    const h = Math.ceil((wy1 - wy0) / k);
+    if (w <= 0 || h <= 0) return;
+    const L = this.ensureLight(w, h);
+    const n = w * h;
+    const { intensity, red, green, blue, bloom } = L;
+    intensity.fill(0, 0, n);
+    red.fill(0, 0, n);
+    green.fill(0, 0, n);
+    blue.fill(0, 0, n);
+    bloom.fill(0, 0, n);
+
+    const lights: Glow[] = [];
     const pos = this.playerPos();
     const flicker = 1 + Math.sin(t * 7.3) * 0.03 + Math.sin(t * 13.1) * 0.02;
-    lights.push({ x: pos.x + 0.5, y: pos.y + 0.3, r: (1.7 + this.light * 0.7 + this.singPulse * 2.6) * flicker, a: 1, color: "#ffd98a", glow: 0.16 });
-    for (const lamp of m.lamps) lights.push({ x: lamp.x + 0.5, y: lamp.y + 0.2, r: lamp.radius * (1 + Math.sin(t * 5 + lamp.x) * 0.04), a: 1, color: lamp.color, glow: 0.2 });
-    for (const v of m.verses) if (!this.collected.has(v.index)) lights.push({ x: v.x + 0.5, y: v.y + 0.5, r: 1.4 + Math.sin(t * 2.2 + v.index) * 0.2, a: 0.85, color: "#fff1c2", glow: 0.18 });
-    lights.push({ x: m.angel.x + 0.5, y: m.angel.y + 0.3, r: 1.6, a: 0.8, color: "#cfdcff", glow: 0.1 });
-    lights.push({ x: m.start.x + 0.5, y: m.start.y + 0.5, r: 1.2, a: 0.6, color: "#c7242f", glow: 0.12 });
-    lights.push({ x: m.portal.x + 0.5, y: m.portal.y + 0.5, r: this.portalOpen ? 4 : 1.2, a: this.portalOpen ? 1 : 0.5, color: this.portalOpen ? "#fff1c2" : "#c7242f", glow: this.portalOpen ? 0.25 : 0.1 });
+    if (this.mode !== "reveal") {
+      lights.push({ x: pos.x + 0.5, y: pos.y + 0.35, r: (2.4 + this.light * 0.75 + this.singPulse * 2.6) * flicker, a: 1, c: WARM, glow: 0.2 + this.singPulse * 0.3 });
+      const orb = this.orbPos();
+      lights.push({ x: orb.x / TILE, y: orb.y / TILE, r: 0.9, a: 0.4, c: [1, 0.95, 0.82], glow: 0.3 * (0.4 + (0.6 * this.light) / this.o.maxLight) });
+    }
+    for (const lamp of m.lamps) {
+      const lit = this.visitedLamps.has(lamp);
+      lights.push({
+        x: lamp.x + 0.5,
+        y: lamp.y + 0.1,
+        r: (lit ? lamp.radius : 2.1) * (1 + Math.sin(t * 5 + lamp.x) * 0.04),
+        a: lit ? 1 : 0.75,
+        c: this.lampTint(lamp.color),
+        glow: lit ? 0.4 : 0.22,
+      });
+    }
+    for (const v of m.verses) {
+      if (!this.collected.has(v.index)) lights.push({ x: v.x + 0.5, y: v.y + 0.5, r: 1.5 + Math.sin(t * 2.2 + v.index) * 0.2, a: 0.85, c: [1, 0.95, 0.78], glow: 0.3 });
+    }
+    lights.push({ x: m.angel.x + 0.5, y: m.angel.y + 0.1, r: 1.9, a: 0.85, c: [0.86, 0.9, 1], glow: 0.2 });
+    lights.push({ x: m.start.x + 0.5, y: m.start.y + 0.5, r: 1.2, a: 0.6, c: [1, 0.5, 0.5], glow: 0.25 });
+    lights.push(
+      this.portalOpen
+        ? { x: m.portal.x + 0.5, y: m.portal.y + 0.3, r: 4.4, a: 1, c: [1, 0.95, 0.8], glow: 0.45 }
+        : { x: m.portal.x + 0.5, y: m.portal.y + 0.5, r: 1.5, a: 0.55, c: [1, 0.45, 0.45], glow: 0.25 },
+    );
     for (const sp of m.sparkles) {
-      const k = (Math.sin(t * 3 + sp.x * 1.7 + sp.y) + 1) / 2;
-      lights.push({ x: sp.x + 0.5, y: sp.y + 0.5, r: 0.4 + k * 0.5, a: 0.7, color: "#ffffff", glow: 0.1 * k });
+      const q = (Math.sin(t * 3 + sp.x * 1.7 + sp.y) + 1) / 2;
+      lights.push({ x: sp.x + 0.5, y: sp.y + 0.5, r: 0.5 + q * 0.6, a: 0.7, c: [1, 1, 1], glow: 0.3 * q });
     }
 
-    const q = 4;
     for (const li of lights) {
-      const x = (ox + li.x * TILE * s) / q;
-      const y = (oy + li.y * TILE * s) / q;
-      const r = (li.r * TILE * s) / q;
-      if (x + r < 0 || y + r < 0 || x - r > lc.width || y - r > lc.height) continue;
-      const g = l.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `rgba(0,0,0,${li.a})`);
-      g.addColorStop(0.5, `rgba(0,0,0,${li.a * 0.8})`);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      l.fillStyle = g;
-      l.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(lc, 0, 0, this.cw, this.ch);
-
-    ctx.globalCompositeOperation = "lighter";
-    for (const li of lights) {
-      if (!li.color || !li.glow) continue;
-      const x = ox + li.x * TILE * s;
-      const y = oy + li.y * TILE * s;
-      const r = li.r * TILE * s * 0.9;
-      if (x + r < 0 || y + r < 0 || x - r > this.cw || y - r > this.ch) continue;
-      const [cr, cg, cb] = rgb(li.color);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `rgba(${cr},${cg},${cb},${li.glow * darkMul})`);
-      g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-      ctx.fillStyle = g;
-      ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    ctx.globalCompositeOperation = "source-over";
-    ctx.imageSmoothingEnabled = false;
-  }
-
-  private renderWeather(ctx: CanvasRenderingContext2D, reveal: number) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const w = this.cw;
-    const h = this.ch;
-    const alpha = reveal < 0 ? 1 : 1 - clamp(reveal / 1.5);
-    if (alpha > 0) {
-      ctx.lineCap = "round";
-      for (const d of this.drops) {
-        if (d.color === "lluvia") {
-          ctx.strokeStyle = `rgba(175,195,215,${0.32 * alpha})`;
-          ctx.lineWidth = this.dpr;
-          ctx.beginPath();
-          ctx.moveTo(d.x * w, d.y * h);
-          ctx.lineTo(d.x * w + d.vx * d.size * w * 0.6, d.y * h + d.size * h);
-          ctx.stroke();
-        } else if (d.color === "#ffe6a8") {
-          const k = (Math.sin(this.time * 2 + d.phase) + 1) / 2;
-          ctx.fillStyle = `rgba(255,230,168,${(0.25 + k * 0.45) * alpha})`;
-          ctx.fillRect(d.x * w, d.y * h, d.size * this.dpr, d.size * this.dpr);
-        } else {
-          ctx.save();
-          ctx.translate(d.x * w, d.y * h);
-          ctx.rotate(d.rot);
-          ctx.globalAlpha = 0.8 * alpha;
-          ctx.fillStyle = d.color;
-          ctx.fillRect(-d.size * this.dpr, -d.size * this.dpr * 0.5, d.size * this.dpr * 2, d.size * this.dpr);
-          ctx.restore();
+      const cx = (li.x * TILE - wx0) / k;
+      const cy = (li.y * TILE - wy0) / k;
+      const r = (li.r * TILE) / k;
+      const bx0 = Math.max(0, Math.floor(cx - r));
+      const bx1 = Math.min(w - 1, Math.ceil(cx + r));
+      const by0 = Math.max(0, Math.floor(cy - r));
+      const by1 = Math.min(h - 1, Math.ceil(cy + r));
+      if (bx0 > bx1 || by0 > by1) continue;
+      const inv = 1 / (r * r);
+      const [cr, cg, cb] = li.c;
+      const glowing = li.glow;
+      for (let y = by0; y <= by1; y++) {
+        const dy = y + 0.5 - cy;
+        const dy2 = dy * dy;
+        let o = y * w + bx0;
+        for (let x = bx0; x <= bx1; x++, o++) {
+          const dx = x + 0.5 - cx;
+          const d2 = (dx * dx + dy2) * inv;
+          if (d2 >= 1) continue;
+          const f = 1 - d2;
+          const v = li.a * f * (0.55 + 0.45 * f);
+          intensity[o] += v;
+          red[o] += v * cr;
+          green[o] += v * cg;
+          blue[o] += v * cb;
+          if (glowing) bloom[o] += glowing * f * f * f;
         }
       }
     }
+
+    const ambient = 0.17 + (1 - dark) * 0.6;
+    const memory = 0.17 * darkMul;
+    const shade = new Uint32Array(L.shade.data.buffer);
+    const glow = new Uint32Array(L.glow.data.buffer);
+    glow.fill(0xff000000, 0, n);
+    const seen = this.seen;
+    // Which tiles each column reads from, and how far between them.
+    const col0 = new Int32Array(w);
+    const col1 = new Int32Array(w);
+    const colT = new Float32Array(w);
+    for (let x = 0; x < w; x++) {
+      const fx = (wx0 + (x + 0.5) * k) / TILE - 0.5;
+      const tx = Math.floor(fx);
+      col0[x] = tx < 0 ? 0 : tx > COLS - 1 ? COLS - 1 : tx;
+      col1[x] = tx + 1 < 0 ? 0 : tx + 1 > COLS - 1 ? COLS - 1 : tx + 1;
+      colT[x] = fx - tx;
+    }
+    const row = new Float32Array(COLS);
+    for (let y = 0; y < h; y++) {
+      const fy = (wy0 + (y + 0.5) * k) / TILE - 0.5;
+      const ty = Math.floor(fy);
+      const ay = fy - ty;
+      const r0 = (ty < 0 ? 0 : ty > ROWS - 1 ? ROWS - 1 : ty) * COLS;
+      const r1 = (ty + 1 < 0 ? 0 : ty + 1 > ROWS - 1 ? ROWS - 1 : ty + 1) * COLS;
+      for (let c = 0; c < COLS; c++) row[c] = seen[r0 + c] + (seen[r1 + c] - seen[r0 + c]) * ay;
+      const bayerRow = (y & 3) * 4;
+      for (let x = 0; x < w; x++) {
+        const o = y * w + x;
+        const s0 = row[col0[x]];
+        const base = ambient + memory * (s0 + (row[col1[x]] - s0) * colT[x]);
+        const bay = BAYER[bayerRow + (x & 3)];
+        const I = intensity[o];
+        let r = base * 0.6;
+        let g = base * 0.7;
+        let b = base;
+        if (I > 0) {
+          const inv = 1 / I;
+          const hr = red[o] * inv;
+          const hg = green[o] * inv;
+          const hb = blue[o] * inv;
+          const v = I * 1.35;
+          let lit = ((v > 1 ? 1 : v) * BAND + 0.5 + (bay - 0.5) * 0.12) | 0;
+          lit = lit > BAND ? 1 : lit / BAND;
+          r += (hr - r) * lit;
+          g += (hg - g) * lit;
+          b += (hb - b) * lit;
+          const q = bloom[o];
+          if (q > 0.01) {
+            const gl = q > 1 ? 255 : q * 255;
+            glow[o] = 0xff000000 | ((hb * gl) << 16) | ((hg * gl) << 8) | (hr * gl);
+          }
+        }
+        shade[o] = 0xff000000 | ((b > 1 ? 255 : b * 255) << 16) | ((g > 1 ? 255 : g * 255) << 8) | (r > 1 ? 255 : r * 255);
+      }
+    }
+    lc.getContext("2d")!.putImageData(L.shade, 0, 0);
+    gc.getContext("2d")!.putImageData(L.glow, 0, 0);
+
+    ctx.setTransform(s * k, 0, 0, s * k, ox + wx0 * s, oy + wy0 * s);
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalCompositeOperation = "multiply";
+    ctx.drawImage(lc, 0, 0, w, h, 0, 0, w, h);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = darkMul;
+    ctx.drawImage(gc, 0, 0, w, h, 0, 0, w, h);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  private renderWeather(ctx: CanvasRenderingContext2D, reveal: number, s: number, ox: number, oy: number) {
+    const alpha = reveal < 0 ? 1 : 1 - clamp(reveal / 1.5);
+    if (alpha > 0 && this.drops.length) {
+      // In world pixels, so the weather has the same pixel size as everything else.
+      ctx.setTransform(s, 0, 0, s, ox, oy);
+      const vx = -ox / s;
+      const vy = -oy / s;
+      const vw = this.cw / s;
+      const vh = this.ch / s;
+      for (const d of this.drops) {
+        const x = Math.floor(vx + d.x * vw);
+        const y = Math.floor(vy + d.y * vh);
+        if (d.color === "lluvia") {
+          ctx.fillStyle = `rgba(178,200,224,${(0.34 + this.flash * 0.4) * alpha})`;
+          ctx.fillRect(x, y, 1, 3);
+          ctx.fillRect(x - 1, y + 3, 1, 3);
+        } else if (d.color === "#ffe6a8") {
+          const k = (Math.sin(this.time * 2 + d.phase) + 1) / 2;
+          ctx.fillStyle = `rgba(255,230,168,${(0.3 + k * 0.5) * alpha})`;
+          ctx.fillRect(x, y, 1, 1);
+        } else {
+          const flat = Math.cos(d.rot) > 0;
+          ctx.globalAlpha = 0.9 * alpha;
+          ctx.fillStyle = d.color;
+          ctx.fillRect(x, y, flat ? 2 : 1, flat ? 1 : 2);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const w = this.cw;
+    const h = this.ch;
     if (this.flash > 0 && reveal < 0) {
-      ctx.fillStyle = `rgba(220,230,255,${this.flash * (this.o.reducedMotion ? 0.08 : 0.22)})`;
+      ctx.fillStyle = `rgba(220,230,255,${this.flash * (this.o.reducedMotion ? 0.08 : 0.2)})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+    if (reveal < 0) {
+      const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.38, w / 2, h / 2, Math.hypot(w, h) * 0.56);
+      v.addColorStop(0, "rgba(2,3,5,0)");
+      v.addColorStop(1, "rgba(2,3,5,0.6)");
+      ctx.fillStyle = v;
       ctx.fillRect(0, 0, w, h);
     }
     for (const m of this.motes) {

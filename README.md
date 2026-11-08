@@ -126,7 +126,7 @@ En `/juego` está **La Voz**, un juego hecho con el libro. Sos la última luz en
 
 | Del libro | En el juego |
 |-----------|-------------|
-| La imagen | El mapa: lo claro se camina y lo oscuro es pared. Al terminar, el mapa se convierte en la pintura |
+| La imagen | El mapa: lo claro se camina y lo oscuro es pared. El piso de piedras toma los colores de la pintura, sin su texto. Al terminar, el mapa se convierte en la pintura |
 | Las estrofas | Los versos que hay que rescatar, entre 3 y 7 por nivel |
 | El significado | Lo que dice el ángel: se entiende a medida que aparecen los versos |
 | `luz` del clima | Faroles: recuperan la luz y guardan el lugar |
@@ -140,11 +140,13 @@ El mismo id genera siempre el mismo mapa. Los niveles se juegan en el orden del 
 
 - **Controles:** flechas o WASD para caminar y Espacio para hablar o cantar. Esc pausa y M silencia. En celular hay un círculo para caminar, un botón ✦, y también se puede tocar adonde ir.
 - **Sonido:** todo se sintetiza en el navegador, sin archivos. Hay volumen general, música y efectos, y se guarda en el navegador junto con el progreso.
+- **Gráficos:** el mundo es pixel art armado en el navegador a partir de cada página: piso de piedras, paredes de roca con volumen, agua, niebla que se mueve y charcos cuando llueve. La luz se calcula por pixel, en bandas, y lo que ya recorriste queda apenas visible.
 - **Imágenes:** los retratos y la portada del juego están en `public/juego/` y se generaron con ChatGPT. La imagen para compartir, `/juego/compartir.jpg`, se arma al compilar.
 - **Pruebas:** con `/juego?prueba=1`, la consola tiene `__laVoz` con atajos para juntar los versos, pelear o revelar la página.
 
 ```
 src/game/level.ts    Genera el mapa de un nivel a partir de su página
+src/game/art.ts      Convierte la página en el pixel art del nivel: piso, paredes, agua y niebla
 src/game/engine.ts   Exploración, batallas, luces y revelación, en canvas
 src/game/audio.ts    Coro, música de batalla y efectos con Web Audio
 src/game/sprites.ts  Pixel art de la Voz, el ángel, las sombras y los faroles
