@@ -1,4 +1,4 @@
-import { BAYER, WORLD_H, WORLD_W, buildWorldArt, fogTile, hexRgb, type WorldArt } from "./art";
+import { ART, WORLD_H, WORLD_W, buildWorldArt, fogTile, hexRgb, type WorldArt } from "./art";
 import { MODES, type AudioEngine, type Key } from "./audio";
 import {
   COLS,
@@ -7,6 +7,7 @@ import {
   SAMPLE_H,
   SAMPLE_W,
   TILE,
+  WALL,
   WATER,
   at,
   findPath,
@@ -18,7 +19,8 @@ import {
   type Verse,
 } from "./level";
 import { createRng, hash, pick, type Rng } from "./rng";
-import { buildSprites, drawSmoke, ellipse, LAMP_HEIGHT, SMOKE_EYES, type Sprites } from "./sprites";
+import { drawSmoke, drawStar, groundShadow, loadPainted, SMOKE_EYES, stand, type Painted } from "./painted";
+import { buildSprites, LAMP_HEIGHT, type Sprites } from "./sprites";
 import type { BattleOption, BattleUI, Dir, LevelSource, Point, Speaker, UIState } from "./types";
 
 /**
@@ -92,24 +94,42 @@ type Battle = {
 };
 
 type Drop = { x: number; y: number; vx: number; vy: number; size: number; rot: number; spin: number; color: string; phase: number };
-type Glow = { x: number; y: number; r: number; a: number; c: readonly number[]; glow: number };
-type Knot = { x: number; y: number; px: number; py: number };
+type Glow = {
+  x: number;
+  y: number;
+  /** Reach, in tiles. */
+  r: number;
+  a: number;
+  c: readonly number[];
+  /** Whether walls cast shadows from this light. */
+  shadow: boolean;
+  glow: number;
+  gx: number;
+  gy: number;
+  gr: number;
+};
 
-/** Buffers for the light map, computed per world pixel on every frame. */
+/** Buffers for the light map, reused between frames. */
 type LightBuffers = {
-  w: number;
-  h: number;
   intensity: Float32Array;
   red: Float32Array;
   green: Float32Array;
   blue: Float32Array;
-  bloom: Float32Array;
-  shade: ImageData;
-  glow: ImageData;
+  image: ImageData | null;
+  /** What the lights add on top, so lit places look warm and not just less dark. */
+  bloom: ImageData | null;
 };
 
-const WARM = [1, 0.93, 0.8] as const;
-const BAND = 5;
+const WARM = [1, 0.86, 0.66] as const;
+
+/** Heights of the painted figures, in world pixels (a tile is 16). */
+const VOICE_TALL = 28;
+const ANGEL_TALL = 31;
+const LAMP_TALL = 40;
+/** Where the Voice holds the lantern in each direction, from its feet. */
+const LANTERN: Record<Dir, Point> = { down: { x: -2.7, y: 9.5 }, up: { x: 5, y: 10.1 }, left: { x: -4.7, y: 10.3 }, right: { x: 4.7, y: 10.3 } };
+/** Where the lamp's flame is, from the foot of its post. */
+const FLAME = { x: 2.7, y: 29 };
 
 export type EngineOptions = {
   level: LevelSource;
@@ -165,7 +185,6 @@ export class Engine {
   private canvasEl: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private lightCanvas: HTMLCanvasElement | null = null;
-  private glowCanvas: HTMLCanvasElement | null = null;
   private fogCanvas: HTMLCanvasElement | null = null;
   private fogPattern: CanvasPattern | null = null;
   private lightBuffers: LightBuffers | null = null;
@@ -188,7 +207,7 @@ export class Engine {
   private rainy = false;
   /** How much of each tile the player has seen: explored places stay faintly visible. */
   private seen = new Float32Array(COLS * ROWS);
-  private scarf: Knot[] = [];
+  private paintedArt: Painted | null = null;
   private splashes: { x: number; y: number; t: number }[] = [];
   private splashTimer = 0;
   private lampTints = new Map<string, number[]>();
@@ -254,7 +273,6 @@ export class Engine {
     this.canvasEl = el;
     this.ctx = el.getContext("2d");
     this.lightCanvas = canvas(4, 4);
-    this.glowCanvas = canvas(4, 4);
     this.fogCanvas = canvas(4, 4);
     this.fogPattern = null;
     this.font = getComputedStyle(document.body).fontFamily || this.font;
@@ -356,18 +374,13 @@ export class Engine {
       }
     },
     reveal: () => this.startReveal(),
-    art: () => ({ ground: this.art.ground.toDataURL(), walls: this.art.walls.toDataURL() }),
-    sprites: () => {
-      const sp = this.sprites;
-      const list = [...sp.voice.down, ...sp.voice.up, ...sp.voice.left, ...sp.voice.right, ...sp.angel, sp.feather, sp.lamp("#ffd08a", true, 0), sp.lamp("#ffd08a", false, 0), sp.starRed, sp.starBig, sp.starGold];
-      const sheet = canvas(list.reduce((w, c) => w + c.width + 2, 0), 28);
-      const g = sheet.getContext("2d")!;
-      let x = 0;
-      for (const c of list) {
-        g.drawImage(c, x, 0);
-        x += c.width + 2;
-      }
-      return sheet.toDataURL();
+    art: () => {
+      const half = (layer: HTMLCanvasElement) => {
+        const c = canvas(layer.width / ART, layer.height / ART);
+        c.getContext("2d")!.drawImage(layer, 0, 0, c.width, c.height);
+        return c.toDataURL();
+      };
+      return { ground: half(this.art.ground), walls: half(this.art.walls) };
     },
     state: () => ({ mode: this.mode, player: { x: this.player.x, y: this.player.y }, light: this.light, verses: this.collected.size }),
   };
@@ -377,7 +390,10 @@ export class Engine {
   private async load(session: number) {
     try {
       const src = this.o.level.image;
-      const image = await this.loadImage(`/_next/image?url=${encodeURIComponent(src)}&w=640&q=75`).catch(() => this.loadImage(src));
+      const [image, painted] = await Promise.all([
+        this.loadImage(`/_next/image?url=${encodeURIComponent(src)}&w=640&q=75`).catch(() => this.loadImage(src)),
+        loadPainted(),
+      ]);
       if (session !== this.session) return;
       this.painting = image;
       const sample = canvas(SAMPLE_W, SAMPLE_H);
@@ -392,7 +408,8 @@ export class Engine {
       void this.loadCreature("/juego/guardian.jpg", "guardian");
       const particles = this.o.level.weather.particulas ?? [];
       this.rainy = particles.some((p) => p.tipo === "lluvia");
-      this.art = buildWorldArt(image, this.map, {
+      this.paintedArt = painted;
+      this.art = buildWorldArt(image, this.map, { ground: painted.ground, rock: painted.rock, boulder: painted.boulder }, {
         seed: hash(this.o.level.id),
         tone: this.o.level.tone,
         rain: this.rainy,
@@ -400,7 +417,6 @@ export class Engine {
       });
       this.fog = fogTile(hash(this.o.level.id) ^ 0x6f);
       this.seen.fill(0);
-      this.scarf = [];
       this.blurred = canvas(27, 48);
       const bctx = this.blurred.getContext("2d")!;
       bctx.imageSmoothingQuality = "high";
@@ -570,7 +586,6 @@ export class Engine {
     this.updateWeather(dt);
     if (this.mode !== "battle" && this.mode !== "reveal") {
       this.updateSeen();
-      this.updateScarf(dt);
     }
 
     switch (this.mode) {
@@ -633,52 +648,6 @@ export class Engine {
     const pos = this.playerPos();
     mark(pos.x, pos.y, 1.6 + this.light * 0.55);
     for (const lamp of this.visitedLamps) mark(lamp.x, lamp.y, 3);
-  }
-
-  /** Where the scarf is tied: the neck, which moves with the direction the Voice faces. */
-  private scarfAnchor() {
-    const pos = this.playerPos();
-    const d = this.player.dir;
-    return { x: pos.x * TILE + (d === "left" ? 11 : d === "right" ? 5 : 8), y: pos.y * TILE - 8 + (d === "up" ? 13 : 11) };
-  }
-
-  /** The red scarf follows the Voice like a short rope, with gravity and a bit of wind. */
-  private updateScarf(dt: number) {
-    const a = this.scarfAnchor();
-    if (!this.scarf.length) this.scarf = Array.from({ length: 5 }, (_, i) => ({ x: a.x, y: a.y + i * 2, px: a.x, py: a.y + i * 2 }));
-    const knots = this.scarf;
-    knots[0].x = knots[0].px = a.x;
-    knots[0].y = knots[0].py = a.y;
-    const dt2 = dt * dt;
-    const wind = this.rainy ? -30 : 0;
-    for (let i = 1; i < knots.length; i++) {
-      const k = knots[i];
-      const vx = (k.x - k.px) * 0.9;
-      const vy = (k.y - k.py) * 0.9;
-      k.px = k.x;
-      k.py = k.y;
-      k.x += vx + (wind + Math.sin(this.time * 4.3 + i * 0.9) * 26) * dt2;
-      k.y += vy + 90 * dt2;
-    }
-    for (let pass = 0; pass < 3; pass++) {
-      for (let i = 1; i < knots.length; i++) {
-        const prev = knots[i - 1];
-        const k = knots[i];
-        const dx = k.x - prev.x;
-        const dy = k.y - prev.y;
-        const d = Math.hypot(dx, dy) || 1;
-        if (d > 2.4) {
-          k.x = prev.x + (dx / d) * 2.4;
-          k.y = prev.y + (dy / d) * 2.4;
-        }
-      }
-    }
-  }
-
-  /** The little light that floats around the Voice. It dims as the Voice loses light. */
-  private orbPos(t = this.time) {
-    const pos = this.playerPos();
-    return { x: pos.x * TILE + 8 + Math.cos(t * 1.6) * 9, y: pos.y * TILE - 11 + Math.sin(t * 3.2) * 2 };
   }
 
   private isAngel(p: Point) {
@@ -1546,20 +1515,25 @@ export class Engine {
     const actorsAlpha = reveal < 0 ? 1 : 1 - clamp(reveal / 1.2);
     const paint = reveal < 0 ? 0 : ease(clamp((reveal - 3.2) / 2));
 
-    ctx.setTransform(s, 0, 0, s, ox, oy);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.art.ground, 0, 0);
+    // The visible part of the world, in world pixels and in tiles.
+    const vx0 = Math.max(0, -ox / s);
+    const vy0 = Math.max(0, -oy / s);
+    const vx1 = Math.min(WORLD_W, (this.cw - ox) / s);
+    const vy1 = Math.min(WORLD_H, (this.ch - oy) / s);
+    const x0 = Math.max(0, Math.floor(vx0 / TILE) - 1);
+    const y0 = Math.max(0, Math.floor(vy0 / TILE) - 1);
+    const x1 = Math.min(COLS - 1, Math.ceil(vx1 / TILE) + 1);
+    const y1 = Math.min(ROWS - 1, Math.ceil(vy1 / TILE) + 1);
 
-    // Visible tiles, to animate only what is on screen.
-    const x0 = Math.max(0, Math.floor(-ox / s / TILE) - 1);
-    const y0 = Math.max(0, Math.floor(-oy / s / TILE) - 1);
-    const x1 = Math.min(COLS - 1, Math.ceil((this.cw - ox) / s / TILE) + 1);
-    const y1 = Math.min(ROWS - 1, Math.ceil((this.ch - oy) / s / TILE) + 1);
+    ctx.setTransform(s, 0, 0, s, ox, oy);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "low";
+    this.blit(ctx, this.art.ground, vx0, vy0, vx1, vy1, 0);
 
     if (actorsAlpha > 0) {
       ctx.globalAlpha = actorsAlpha;
       this.drawWater(ctx, x0, y0, x1, y1, t);
-      this.drawFog(ctx, s, ox, oy);
+      this.drawFog(ctx, vx0, vy0, vx1, vy1);
       for (const f of m.fogs) {
         const fx = f.x * TILE + Math.sin(t * 0.3 + f.y) * TILE * 0.6;
         const fy = f.y * TILE;
@@ -1571,8 +1545,7 @@ export class Engine {
         ctx.fillRect(fx - f.rx * TILE * 1.2, fy - f.ry * TILE * 1.2, f.rx * TILE * 2.4, f.ry * TILE * 2.4);
       }
       // The red star where the page begins, and the title above.
-      const star = this.sprites.starRed;
-      ctx.drawImage(star, m.start.x * TILE + 8 - (star.width >> 1), m.start.y * TILE + 8 - (star.height >> 1));
+      drawStar(ctx, m.start.x * TILE + 8, m.start.y * TILE + 8, 12, "#98121a", "rgba(199,36,47,0.9)", 10 * this.dpr);
       this.drawPortal(ctx, t);
       this.drawSplashes(ctx);
       ctx.globalAlpha = 1;
@@ -1580,22 +1553,20 @@ export class Engine {
 
     if (wallsAlpha > 0) {
       ctx.globalAlpha = wallsAlpha;
-      ctx.drawImage(this.art.walls, 0, reveal < 0 ? 0 : Math.round((1 - wallsAlpha) * 6));
+      this.blit(ctx, this.art.walls, vx0, vy0, vx1, vy1, reveal < 0 ? 0 : (1 - wallsAlpha) * 6);
       ctx.globalAlpha = 1;
     }
 
     if (actorsAlpha > 0) {
       ctx.globalAlpha = actorsAlpha;
-      this.drawActors(ctx, t);
+      this.drawActors(ctx, t, y0 - 2, y1 + 2, x0 - 2, x1 + 2);
       ctx.globalAlpha = 1;
     }
 
     if (paint > 0) {
-      ctx.imageSmoothingEnabled = true;
       ctx.globalAlpha = paint;
       ctx.drawImage(this.painting, 0, 0, WORLD_W, WORLD_H);
       ctx.globalAlpha = 1;
-      ctx.imageSmoothingEnabled = false;
     }
 
     this.renderLighting(ctx, s, ox, oy, reveal);
@@ -1605,54 +1576,83 @@ export class Engine {
       ctx.setTransform(s, 0, 0, s, ox, oy);
       for (const sh of this.shadows) {
         if (!sh.alive) continue;
-        const sx = Math.round(lerp(sh.fromX, sh.x, sh.t) * TILE + 8);
-        const sy = Math.round(lerp(sh.fromY, sh.y, sh.t) * TILE + 13 + Math.cos(t * 1.7 + sh.phase) * 0.9);
-        const blink = Math.sin(t * 0.9 + sh.phase * 3) > 0.96;
+        const sx = lerp(sh.fromX, sh.x, sh.t) * TILE + 8;
+        const sy = lerp(sh.fromY, sh.y, sh.t) * TILE + 13 + Math.cos(t * 1.7 + sh.phase) * 1.1;
+        const blink = Math.sin(t * 0.9 + sh.phase * 3) > 0.96 ? 0.15 : 1;
         const a = actorsAlpha * (sh.stunned > 0 ? 0.45 : 1);
-        ctx.globalCompositeOperation = "lighter";
-        ctx.fillStyle = `rgba(255,40,52,${0.22 * a})`;
-        for (const [ex, ey] of SMOKE_EYES) ctx.fillRect(sx + ex - 1, sy + ey - 1, 4, 3);
-        ctx.globalCompositeOperation = "source-over";
-        ctx.fillStyle = `rgba(255,52,62,${0.95 * a})`;
-        for (const [ex, ey] of SMOKE_EYES) ctx.fillRect(sx + ex, sy + ey + (blink ? 0.6 : 0), 2, blink ? 0.4 : 1);
+        for (const [ex, ey] of SMOKE_EYES) {
+          const x = sx + ex + Math.sin(t * 2.1 + sh.phase) * 1.1;
+          const y = sy + ey;
+          ctx.globalCompositeOperation = "lighter";
+          const g = ctx.createRadialGradient(x, y, 0, x, y, 3.2);
+          g.addColorStop(0, `rgba(255,40,50,${0.55 * a})`);
+          g.addColorStop(1, "rgba(255,40,50,0)");
+          ctx.fillStyle = g;
+          ctx.fillRect(x - 3.2, y - 3.2, 6.4, 6.4);
+          ctx.globalCompositeOperation = "source-over";
+          ctx.fillStyle = `rgba(255,70,72,${0.95 * a})`;
+          ctx.beginPath();
+          ctx.ellipse(x, y, 1, 0.55 * blink, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
 
-    this.renderWeather(ctx, reveal, s, ox, oy);
+    this.renderWeather(ctx, reveal);
+  }
+
+  /** Draws the visible part of a layer painted at ART resolution. */
+  private blit(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement, x0: number, y0: number, x1: number, y1: number, dy: number) {
+    if (x1 <= x0 || y1 <= y0) return;
+    const sx = Math.max(0, Math.floor(x0 * ART) - 2);
+    const sy = Math.max(0, Math.floor((y0 - dy) * ART) - 2);
+    const sw = Math.min(layer.width - sx, Math.ceil((x1 - x0) * ART) + 4);
+    const sh = Math.min(layer.height - sy, Math.ceil((y1 - y0) * ART) + 4);
+    if (sw <= 0 || sh <= 0) return;
+    ctx.drawImage(layer, sx, sy, sw, sh, sx / ART, sy / ART + dy, sw / ART, sh / ART);
   }
 
   private drawWater(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, t: number) {
     const m = this.map;
+    ctx.lineCap = "round";
+    ctx.lineWidth = 0.6;
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         if (m.cells[at(x, y)] !== WATER) continue;
         const h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
         for (let k = 0; k < 2; k++) {
-          const phase = (t * (0.3 + (h % 7) * 0.04) + k * 0.5 + (h % 13) / 13) % 1;
-          ctx.fillStyle = `rgba(185,215,240,${0.5 * Math.sin(phase * Math.PI)})`;
-          ctx.fillRect(x * TILE + ((h >> (k * 4)) % 9) + Math.round(phase * 4), y * TILE + 4 + k * 6 + ((h >> 8) % 3), 2 + k, 1);
+          const phase = (t * (0.25 + (h % 7) * 0.03) + k * 0.5 + (h % 13) / 13) % 1;
+          const px = x * TILE + 2 + ((h >> (k * 4)) % 9) + phase * 4;
+          const py = y * TILE + 4 + k * 6 + ((h >> 8) % 3);
+          ctx.strokeStyle = `rgba(170,200,235,${0.4 * Math.sin(phase * Math.PI)})`;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + 3 + k, py);
+          ctx.stroke();
         }
       }
     }
+    ctx.lineWidth = 0.45;
     for (const p of this.art.puddles) {
-      const phase = (t * 0.8 + p.seed / 1000) % 1;
-      const r = 1 + phase * p.rx;
-      ctx.fillStyle = `rgba(190,215,235,${0.55 * (1 - phase)})`;
-      for (let a = 0; a < 14; a++) {
-        const ang = (a / 14) * Math.PI * 2;
-        ctx.fillRect(Math.round(p.x + Math.cos(ang) * r), Math.round(p.y + (Math.sin(ang) * r * p.ry) / p.rx), 1, 1);
+      for (let k = 0; k < 2; k++) {
+        const phase = (t * 0.7 + p.seed / 1000 + k * 0.5) % 1;
+        const r = 0.8 + phase * p.rx * 0.9;
+        ctx.strokeStyle = `rgba(190,212,236,${0.5 * (1 - phase)})`;
+        ctx.beginPath();
+        ctx.ellipse(p.x + (k ? 2 : -1.5), p.y, r, (r * p.ry) / p.rx, 0, 0, Math.PI * 2);
+        ctx.stroke();
       }
     }
   }
 
-  /** Fog that drifts over the gloom: a repeating texture, cut to the shape of the gloom. */
-  private drawFog(ctx: CanvasRenderingContext2D, s: number, ox: number, oy: number) {
+  /** Fog drifting over the gloom: a soft texture cut to the shape of the gloom. */
+  private drawFog(ctx: CanvasRenderingContext2D, vx0: number, vy0: number, vx1: number, vy1: number) {
     const fc = this.fogCanvas;
     if (!fc) return;
-    const fx0 = Math.max(0, Math.floor(-ox / s));
-    const fy0 = Math.max(0, Math.floor(-oy / s));
-    const w = Math.min(WORLD_W, Math.ceil((this.cw - ox) / s)) - fx0;
-    const h = Math.min(WORLD_H, Math.ceil((this.ch - oy) / s)) - fy0;
+    const fx0 = Math.floor(vx0);
+    const fy0 = Math.floor(vy0);
+    const w = Math.ceil(vx1) - fx0;
+    const h = Math.ceil(vy1) - fy0;
     if (w <= 0 || h <= 0) return;
     if (fc.width < w || fc.height < h) {
       fc.width = Math.max(fc.width, w);
@@ -1664,36 +1664,35 @@ export class Engine {
     if (!this.fogPattern) return;
     f.setTransform(1, 0, 0, 1, 0, 0);
     f.globalCompositeOperation = "source-over";
+    f.globalAlpha = 1;
     f.clearRect(0, 0, w, h);
     f.fillStyle = this.fogPattern;
-    const wrap = (v: number) => (((v % 64) + 64) % 64) - 64;
+    const wrap = (v: number) => (((v % 128) + 128) % 128) - 128;
     for (const [speed, alpha, offset] of [
-      [4, 1, 0],
-      [-2.6, 0.7, 23],
+      [5, 1, 0],
+      [-3.2, 0.7, 51],
     ]) {
       f.globalAlpha = alpha;
-      f.setTransform(1, 0, 0, 1, wrap(Math.round(this.time * speed) + offset - fx0), wrap(Math.round(this.time * speed * 0.35) + offset - fy0));
-      f.fillRect(0, 0, w + 128, h + 128);
+      f.setTransform(1, 0, 0, 1, wrap(this.time * speed + offset - fx0), wrap(this.time * speed * 0.35 + offset - fy0));
+      f.fillRect(0, 0, w + 256, h + 256);
     }
     f.setTransform(1, 0, 0, 1, 0, 0);
     f.globalAlpha = 1;
     f.globalCompositeOperation = "destination-in";
-    f.drawImage(this.art.gloom, fx0, fy0, w, h, 0, 0, w, h);
+    f.imageSmoothingEnabled = true;
+    f.drawImage(this.art.gloom, -fx0, -fy0, WORLD_W, WORLD_H);
     f.globalCompositeOperation = "source-over";
     ctx.drawImage(fc, 0, 0, w, h, fx0, fy0, w, h);
   }
 
   private drawSplashes(ctx: CanvasRenderingContext2D) {
+    ctx.lineWidth = 0.4;
     for (const sp of this.splashes) {
-      ctx.fillStyle = `rgba(205,222,238,${0.65 * (1 - sp.t / 0.3)})`;
-      if (sp.t < 0.08) {
-        ctx.fillRect(sp.x, sp.y - 1, 1, 1);
-        continue;
-      }
-      const r = sp.t < 0.18 ? 1 : 2;
-      ctx.fillRect(sp.x - r, sp.y, 1, 1);
-      ctx.fillRect(sp.x + r, sp.y, 1, 1);
-      if (r === 1) ctx.fillRect(sp.x, sp.y - 1, 1, 1);
+      const k = sp.t / 0.3;
+      ctx.strokeStyle = `rgba(205,222,240,${0.6 * (1 - k)})`;
+      ctx.beginPath();
+      ctx.ellipse(sp.x, sp.y, 0.6 + k * 2.6, 0.3 + k * 1.1, 0, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 
@@ -1702,85 +1701,105 @@ export class Engine {
     const x = p.x * TILE + 8;
     const y = p.y * TILE + 8;
     if (!this.portalOpen) {
-      // Embers turning around the closed star.
-      for (let k = 0; k < 12; k++) {
-        const a = t * 0.6 + (k / 12) * Math.PI * 2;
-        ctx.fillStyle = k % 2 ? "rgba(199,36,47,0.85)" : "rgba(152,18,26,0.55)";
-        ctx.fillRect(Math.round(x + Math.cos(a) * 13), Math.round(y + Math.sin(a) * 7), 1, 1);
-      }
-      const star = this.sprites.starBig;
-      ctx.drawImage(star, x - (star.width >> 1), y - (star.height >> 1));
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = `rgba(199,36,47,${0.4 + Math.sin(t * 2) * 0.15})`;
+      ctx.beginPath();
+      ctx.ellipse(x, y + 2, 13 + Math.sin(t * 2) * 0.6, 7, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      drawStar(ctx, x, y, 17, "#98121a", "rgba(199,36,47,0.95)", 14 * this.dpr);
       return;
     }
     const pulse = (Math.sin(t * 2.4) + 1) / 2;
-    // A beam of light in stepped bands, brighter at the core.
-    for (let k = 0; k < 4; k++) {
-      const half = 8 - k * 2;
-      ctx.fillStyle = `rgba(255,241,194,${(0.1 + k * 0.07) * (0.7 + pulse * 0.3)})`;
-      ctx.fillRect(x - half, y - 90, half * 2, 96);
+    const beam = ctx.createLinearGradient(0, y - 100, 0, y + 6);
+    beam.addColorStop(0, "rgba(255,241,194,0)");
+    beam.addColorStop(1, `rgba(255,241,194,${0.32 + pulse * 0.12})`);
+    ctx.fillStyle = beam;
+    for (const half of [9, 5, 2.5]) ctx.fillRect(x - half, y - 100, half * 2, 106);
+    for (let k = 0; k < 12; k++) {
+      const q = (t * 0.45 + k / 12) % 1;
+      ctx.fillStyle = `rgba(255,246,216,${1 - q})`;
+      ctx.beginPath();
+      ctx.arc(x + Math.sin(k * 2.1 + t) * 6, y - q * 80, 0.6, 0, Math.PI * 2);
+      ctx.fill();
     }
-    for (let k = 0; k < 10; k++) {
-      const s = (t * 0.45 + k / 10) % 1;
-      ctx.fillStyle = `rgba(255,246,216,${1 - s})`;
-      ctx.fillRect(Math.round(x + Math.sin(k * 2.1 + t) * 6), Math.round(y - s * 70), 1, 1);
-    }
-    const star = this.sprites.starGold;
-    ctx.drawImage(star, x - (star.width >> 1), y - (star.height >> 1) + Math.round(Math.sin(t * 2) * 2));
+    ctx.save();
+    ctx.translate(x, y + Math.sin(t * 2) * 1.5);
+    ctx.rotate(Math.sin(t * 0.8) * 0.15);
+    drawStar(ctx, 0, 0, 18, "#fbe3a2", "rgba(255,230,160,1)", 20 * this.dpr);
+    ctx.restore();
   }
 
-  private drawActors(ctx: CanvasRenderingContext2D, t: number) {
+  private drawActors(ctx: CanvasRenderingContext2D, t: number, top: number, bottom: number, left: number, right: number) {
+    const onScreen = (p: Point) => p.x >= left && p.x <= right && p.y >= top && p.y <= bottom;
     const m = this.map;
-    const sp = this.sprites;
-    const shade = "rgba(0,0,0,0.4)";
+    const P = this.paintedArt;
+    const blob = groundShadow();
+    const shadowAt = (x: number, y: number, rx: number, ry: number, a = 1) => {
+      const alpha = ctx.globalAlpha;
+      ctx.globalAlpha = alpha * a;
+      ctx.drawImage(blob, x - rx, y - ry, rx * 2, ry * 2);
+      ctx.globalAlpha = alpha;
+    };
     const items: { y: number; draw: () => void }[] = [];
-    const flame = Math.floor(t * 7) % 2;
     for (const l of m.lamps) {
+      if (!onScreen(l)) continue;
       const lit = this.visitedLamps.has(l);
+      const x = l.x * TILE + 8;
+      const y = l.y * TILE + 15;
       items.push({
         y: l.y,
         draw: () => {
-          ctx.drawImage(ellipse(4, 1, shade), l.x * TILE + 4, l.y * TILE + 14);
-          ctx.drawImage(sp.lamp(l.color, lit, flame), l.x * TILE + 3, l.y * TILE + 16 - LAMP_HEIGHT);
+          shadowAt(x + 1.5, y, 7, 2.6);
+          const img = lit ? P?.lamp : P?.lampDark;
+          if (img) stand(ctx, img, x, y + 0.5, LAMP_TALL);
+          else ctx.drawImage(this.sprites.lamp(l.color, lit, 0), x - 5, y + 1 - LAMP_HEIGHT);
         },
       });
     }
     for (const v of m.verses) {
-      if (this.collected.has(v.index)) continue;
-      const bob = Math.round(Math.sin(t * 2.2 + v.index) * 1.5);
+      if (this.collected.has(v.index) || !onScreen(v)) continue;
+      const bob = Math.sin(t * 2.2 + v.index) * 1.5;
+      const x = v.x * TILE + 8;
+      const y = v.y * TILE + 13;
       items.push({
         y: v.y,
         draw: () => {
-          ctx.drawImage(ellipse(3, 1, "rgba(255,226,150,0.3)"), v.x * TILE + 5, v.y * TILE + 13);
-          ctx.drawImage(sp.feather, v.x * TILE + 4, v.y * TILE - 1 + bob);
+          shadowAt(x, y + 1, 4, 1.4, 0.6);
+          if (P?.feather) stand(ctx, P.feather, x, y - 2 + bob, 15, { tilt: Math.sin(t * 1.3 + v.index) * 0.12 });
+          else ctx.drawImage(this.sprites.feather, x - 4, y - 14 + bob);
           for (let k = 0; k < 3; k++) {
-            const s = (t * 0.8 + k / 3 + v.index * 0.37) % 1;
-            ctx.fillStyle = `rgba(255,246,216,${Math.sin(s * Math.PI)})`;
-            ctx.fillRect(v.x * TILE + 8 + Math.round(Math.sin(k * 2.7 + v.index) * 6), v.y * TILE + 10 - Math.round(s * 14), 1, 1);
+            const q = (t * 0.8 + k / 3 + v.index * 0.37) % 1;
+            ctx.fillStyle = `rgba(255,246,216,${Math.sin(q * Math.PI)})`;
+            ctx.beginPath();
+            ctx.arc(x + Math.sin(k * 2.7 + v.index) * 6, y - 3 - q * 14, 0.5, 0, Math.PI * 2);
+            ctx.fill();
           }
         },
       });
     }
     const a = m.angel;
-    const flap = Math.sin(t * 2.6) > 0 ? 1 : 0;
-    const hover = Math.round(Math.sin(t * 1.3) * 1.5);
+    const hover = Math.sin(t * 1.3) * 1.5;
     items.push({
       y: a.y,
       draw: () => {
-        ctx.drawImage(ellipse(5, 1, shade), a.x * TILE + 3, a.y * TILE + 14);
-        ctx.drawImage(sp.angel[flap], a.x * TILE - 4, a.y * TILE - 13 + hover);
+        const x = a.x * TILE + 8;
+        const y = a.y * TILE + 15;
+        shadowAt(x, y, 8, 2.6, 0.75 - hover * 0.05);
+        if (P?.angel) stand(ctx, P.angel, x, y - 5 + hover, ANGEL_TALL, { squash: 1 + Math.sin(t * 1.3) * 0.01 });
+        else ctx.drawImage(this.sprites.angel[0], x - 12, y - 31 + hover);
       },
     });
     for (const sh of this.shadows) {
-      if (!sh.alive) continue;
+      if (!sh.alive || !onScreen(sh)) continue;
       const ty = lerp(sh.fromY, sh.y, sh.t);
-      const sx = Math.round(lerp(sh.fromX, sh.x, sh.t) * TILE + 8);
-      const sy = Math.round(ty * TILE + 13);
+      const sx = lerp(sh.fromX, sh.x, sh.t) * TILE + 8;
+      const sy = ty * TILE + 13;
       items.push({
         y: ty,
         draw: () => {
-          ctx.drawImage(ellipse(5, 1, "rgba(0,0,0,0.5)"), sx - 5, sy + 1);
+          shadowAt(sx, sy + 2, 7, 2.4, 0.9);
           const alpha = ctx.globalAlpha;
-          ctx.globalAlpha = alpha * (sh.stunned > 0 ? 0.5 : 0.96);
+          ctx.globalAlpha = alpha * (sh.stunned > 0 ? 0.5 : 1);
           drawSmoke(ctx, sx, sy, t, sh.phase, sh.stunned > 0 ? 0.3 : 1);
           ctx.globalAlpha = alpha;
         },
@@ -1788,82 +1807,63 @@ export class Engine {
     }
     const p = this.player;
     const pos = this.playerPos();
-    const frames = sp.voice[p.dir];
-    const step = p.moving ? Math.floor(this.walkClock / 0.12) % 4 : 0;
-    const frame = step === 1 ? frames[1] : step === 3 ? frames[2] : frames[0];
-    const bob = step === 1 || step === 3 ? -1 : 0;
     const blinking = this.invulnerable > 0 && Math.floor(t * 10) % 2 === 0;
-    const px = Math.round(pos.x * TILE);
-    const py = Math.round(pos.y * TILE);
+    const stride = Math.sin((this.walkClock * Math.PI) / 0.22);
+    const bob = p.moving ? Math.abs(stride) * 1.3 : Math.sin(t * 2) * 0.2;
+    const x = pos.x * TILE + 8;
+    const y = pos.y * TILE + 15;
     items.push({
       y: pos.y,
       draw: () => {
-        ctx.drawImage(ellipse(5, 1, shade), px + 3, py + 14);
+        shadowAt(x, y, 6.5, 2.3);
         if (blinking) return;
-        if (p.dir === "down") this.drawScarf(ctx);
-        ctx.drawImage(frame, px, py - 8 + bob);
-        if (p.dir !== "down") this.drawScarf(ctx);
+        const img = p.dir === "down" ? P?.voiceFront : p.dir === "up" ? P?.voiceBack : P?.voiceSide;
+        if (img) stand(ctx, img, x, y - bob, VOICE_TALL, { flip: p.dir === "right", tilt: p.moving ? stride * 0.045 : 0 });
+        else {
+          const frames = this.sprites.voice[p.dir];
+          ctx.drawImage(frames[p.moving ? 1 + (Math.floor(this.walkClock / 0.12) % 2) : 0], x - 8, y - 23 - bob);
+        }
       },
     });
     items.sort((i, j) => i.y - j.y);
     for (const it of items) it.draw();
-    this.drawOrb(ctx);
   }
 
-  private drawScarf(ctx: CanvasRenderingContext2D) {
-    const knots = this.scarf;
-    for (let i = 0; i < knots.length - 1; i++) {
-      const a = knots[i];
-      const b = knots[i + 1];
-      ctx.fillStyle = i < 2 ? "#c7242f" : "#8a0f18";
-      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y)));
-      for (let k = 0; k <= steps; k++) {
-        ctx.fillRect(Math.round(a.x + ((b.x - a.x) * k) / steps), Math.round(a.y + ((b.y - a.y) * k) / steps), i < 2 ? 2 : 1, 1);
+  /** Where the Voice's lantern is. */
+  private lanternPos() {
+    const pos = this.playerPos();
+    const at = LANTERN[this.player.dir];
+    return { x: pos.x * TILE + 8 + at.x, y: pos.y * TILE + 15 - at.y };
+  }
+
+  /** Whether light from (x0, y0) reaches (x1, y1), in world pixels: walls in between block it. */
+  private sight(x0: number, y0: number, x1: number, y1: number) {
+    let tx = Math.floor(x0 / TILE);
+    let ty = Math.floor(y0 / TILE);
+    const ex = Math.floor(x1 / TILE);
+    const ey = Math.floor(y1 / TILE);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const stepX = dx > 0 ? 1 : -1;
+    const stepY = dy > 0 ? 1 : -1;
+    const deltaX = dx !== 0 ? TILE / Math.abs(dx) : Infinity;
+    const deltaY = dy !== 0 ? TILE / Math.abs(dy) : Infinity;
+    let maxX = dx !== 0 ? ((stepX > 0 ? (tx + 1) * TILE : tx * TILE) - x0) / dx : Infinity;
+    let maxY = dy !== 0 ? ((stepY > 0 ? (ty + 1) * TILE : ty * TILE) - y0) / dy : Infinity;
+    const cells = this.map.cells;
+    for (let i = 0; i < 48; i++) {
+      if (tx === ex && ty === ey) return true;
+      if (maxX < maxY) {
+        maxX += deltaX;
+        tx += stepX;
+      } else {
+        maxY += deltaY;
+        ty += stepY;
       }
+      if (tx === ex && ty === ey) return true;
+      if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS || cells[at(tx, ty)] === WALL) return false;
     }
-  }
-
-  private drawOrb(ctx: CanvasRenderingContext2D) {
-    const o = this.orbPos();
-    const x = Math.round(o.x);
-    const y = Math.round(o.y);
-    const k = 0.4 + 0.6 * (this.light / this.o.maxLight);
-    for (let i = 1; i <= 2; i++) {
-      const trail = this.orbPos(this.time - i * 0.07);
-      ctx.fillStyle = `rgba(255,217,138,${(0.5 - i * 0.18) * k})`;
-      ctx.fillRect(Math.round(trail.x), Math.round(trail.y), 1, 1);
-    }
-    ctx.fillStyle = `rgba(255,217,138,${0.85 * k})`;
-    ctx.fillRect(x - 1, y, 4, 2);
-    ctx.fillRect(x, y - 1, 2, 4);
-    ctx.fillStyle = `rgba(255,251,232,${k})`;
-    ctx.fillRect(x, y, 2, 2);
-  }
-
-  private ensureLight(w: number, h: number) {
-    let b = this.lightBuffers;
-    if (!b || b.w !== w || b.h !== h) {
-      const n = w * h;
-      b = {
-        w,
-        h,
-        intensity: new Float32Array(n),
-        red: new Float32Array(n),
-        green: new Float32Array(n),
-        blue: new Float32Array(n),
-        bloom: new Float32Array(n),
-        shade: new ImageData(w, h),
-        glow: new ImageData(w, h),
-      };
-      this.lightBuffers = b;
-      for (const c of [this.lightCanvas, this.glowCanvas]) {
-        if (c && (c.width < w || c.height < h)) {
-          c.width = Math.max(c.width, w);
-          c.height = Math.max(c.height, h);
-        }
-      }
-    }
-    return b;
+    return true;
   }
 
   private lampTint(color: string) {
@@ -1875,214 +1875,264 @@ export class Engine {
     return c;
   }
 
+  /** Every light in the level: where it falls, how far, its color, and where it glows. */
+  private lights(): Glow[] {
+    const t = this.time;
+    const m = this.map;
+    const out: Glow[] = [];
+    if (this.mode !== "reveal") {
+      const pos = this.playerPos();
+      const lantern = this.lanternPos();
+      const flicker = 1 + Math.sin(t * 7.3) * 0.03 + Math.sin(t * 13.1) * 0.02;
+      const strength = 0.45 + (0.55 * this.light) / this.o.maxLight;
+      out.push({
+        x: pos.x * TILE + 8,
+        y: pos.y * TILE + 9,
+        r: (3 + this.light * 0.8 + this.singPulse * 2.6) * flicker,
+        a: 1,
+        c: WARM,
+        shadow: true,
+        glow: (0.42 + this.singPulse * 0.4) * strength * flicker,
+        gx: lantern.x,
+        gy: lantern.y,
+        gr: 12 + this.singPulse * 10,
+      });
+    }
+    for (const lamp of m.lamps) {
+      const lit = this.visitedLamps.has(lamp);
+      const x = lamp.x * TILE + 8;
+      out.push({
+        x,
+        y: lamp.y * TILE + 9,
+        r: (lit ? lamp.radius : 2) * (1 + Math.sin(t * 5 + lamp.x) * 0.04),
+        a: lit ? 1 : 0.7,
+        c: this.lampTint(lamp.color),
+        shadow: true,
+        glow: lit ? 0.55 : 0.25,
+        gx: x + FLAME.x,
+        gy: lamp.y * TILE + 15.5 - FLAME.y,
+        gr: lit ? 11 : 6,
+      });
+    }
+    for (const v of m.verses) {
+      if (!this.collected.has(v.index)) {
+        const x = v.x * TILE + 8;
+        const y = v.y * TILE + 8;
+        out.push({ x, y, r: 1.5 + Math.sin(t * 2.2 + v.index) * 0.2, a: 0.85, c: [1, 0.95, 0.78], shadow: false, glow: 0.35, gx: x, gy: y, gr: 8 });
+      }
+    }
+    const ax = m.angel.x * TILE + 8;
+    out.push({ x: ax, y: m.angel.y * TILE + 6, r: 2, a: 0.85, c: [0.86, 0.9, 1], shadow: false, glow: 0.2, gx: ax, gy: m.angel.y * TILE - 6, gr: 16 });
+    const sx = m.start.x * TILE + 8;
+    const sy = m.start.y * TILE + 8;
+    out.push({ x: sx, y: sy, r: 1.2, a: 0.6, c: [1, 0.5, 0.5], shadow: false, glow: 0.25, gx: sx, gy: sy, gr: 9 });
+    const px = m.portal.x * TILE + 8;
+    const py = m.portal.y * TILE + 8;
+    out.push(
+      this.portalOpen
+        ? { x: px, y: py, r: 4.4, a: 1, c: [1, 0.95, 0.8], shadow: true, glow: 0.45, gx: px, gy: py - 4, gr: 30 }
+        : { x: px, y: py, r: 1.5, a: 0.55, c: [1, 0.45, 0.45], shadow: false, glow: 0.25, gx: px, gy: py, gr: 12 },
+    );
+    for (const sp of m.sparkles) {
+      const q = (Math.sin(t * 3 + sp.x * 1.7 + sp.y) + 1) / 2;
+      const x = sp.x * TILE + 8;
+      const y = sp.y * TILE + 8;
+      out.push({ x, y, r: 0.5 + q * 0.6, a: 0.7, c: [1, 1, 1], shadow: false, glow: 0.3 * q, gx: x, gy: y, gr: 5 });
+    }
+    return out;
+  }
+
   /**
-   * The light map, one value per world pixel: each light adds warmth around it,
-   * the rest falls to a dim moonlight, brighter where the Voice has already been.
-   * Light is reduced to a few bands with ordered dithering, as in pixel art, and
-   * then multiplied over the world. A second pass adds the glow of the lights.
+   * The light map: a grid of four cells per tile where each light adds warmth and
+   * walls cast shadows, over a dim moonlight that is brighter where the Voice has
+   * already been. It is multiplied over the world and stretched smoothly, which
+   * softens the edges of the shadows. Then the lights glow.
    */
   private renderLighting(ctx: CanvasRenderingContext2D, s: number, ox: number, oy: number, reveal: number) {
     const lc = this.lightCanvas;
-    const gc = this.glowCanvas;
-    if (!lc || !gc) return;
-    const t = this.time;
+    if (!lc) return;
     const m = this.map;
     const darkMul = reveal < 0 ? 1 : 1 - ease(clamp(reveal / 2.2));
     const dark = m.darkness * darkMul * (1 - this.flash * 0.8);
     if (dark <= 0.01) return;
 
-    // The part of the world on screen, coarser while the camera zooms out.
-    const k = s >= 2.5 ? 1 : 2;
-    const wx0 = Math.max(-k, Math.floor(-ox / s / k) * k);
-    const wy0 = Math.max(-k, Math.floor(-oy / s / k) * k);
-    const wx1 = Math.min(WORLD_W + k, Math.ceil((this.cw - ox) / s));
-    const wy1 = Math.min(WORLD_H + k, Math.ceil((this.ch - oy) / s));
-    const w = Math.ceil((wx1 - wx0) / k);
-    const h = Math.ceil((wy1 - wy0) / k);
+    const C = TILE / 4;
+    const cx0 = Math.max(-2, Math.floor(-ox / s / C) - 1);
+    const cy0 = Math.max(-2, Math.floor(-oy / s / C) - 1);
+    const cx1 = Math.min(COLS * 4 + 2, Math.ceil((this.cw - ox) / s / C) + 1);
+    const cy1 = Math.min(ROWS * 4 + 2, Math.ceil((this.ch - oy) / s / C) + 1);
+    const w = cx1 - cx0;
+    const h = cy1 - cy0;
     if (w <= 0 || h <= 0) return;
-    const L = this.ensureLight(w, h);
     const n = w * h;
-    const { intensity, red, green, blue, bloom } = L;
+    let L = this.lightBuffers;
+    if (!L || L.intensity.length < n) {
+      L = {
+        intensity: new Float32Array(n),
+        red: new Float32Array(n),
+        green: new Float32Array(n),
+        blue: new Float32Array(n),
+        image: null,
+        bloom: null,
+      };
+      this.lightBuffers = L;
+    }
+    if (!L.image || !L.bloom || L.image.width !== w || L.image.height !== h) {
+      L.image = new ImageData(w, h);
+      L.bloom = new ImageData(w, h);
+      if (lc.width < w || lc.height < h * 2 + 2) {
+        lc.width = Math.max(lc.width, w);
+        lc.height = Math.max(lc.height, h * 2 + 2);
+      }
+    }
+    const { intensity, red, green, blue } = L;
     intensity.fill(0, 0, n);
     red.fill(0, 0, n);
     green.fill(0, 0, n);
     blue.fill(0, 0, n);
-    bloom.fill(0, 0, n);
 
-    const lights: Glow[] = [];
-    const pos = this.playerPos();
-    const flicker = 1 + Math.sin(t * 7.3) * 0.03 + Math.sin(t * 13.1) * 0.02;
-    if (this.mode !== "reveal") {
-      lights.push({ x: pos.x + 0.5, y: pos.y + 0.35, r: (2.4 + this.light * 0.75 + this.singPulse * 2.6) * flicker, a: 1, c: WARM, glow: 0.2 + this.singPulse * 0.3 });
-      const orb = this.orbPos();
-      lights.push({ x: orb.x / TILE, y: orb.y / TILE, r: 0.9, a: 0.4, c: [1, 0.95, 0.82], glow: 0.3 * (0.4 + (0.6 * this.light) / this.o.maxLight) });
-    }
-    for (const lamp of m.lamps) {
-      const lit = this.visitedLamps.has(lamp);
-      lights.push({
-        x: lamp.x + 0.5,
-        y: lamp.y + 0.1,
-        r: (lit ? lamp.radius : 2.1) * (1 + Math.sin(t * 5 + lamp.x) * 0.04),
-        a: lit ? 1 : 0.75,
-        c: this.lampTint(lamp.color),
-        glow: lit ? 0.4 : 0.22,
-      });
-    }
-    for (const v of m.verses) {
-      if (!this.collected.has(v.index)) lights.push({ x: v.x + 0.5, y: v.y + 0.5, r: 1.5 + Math.sin(t * 2.2 + v.index) * 0.2, a: 0.85, c: [1, 0.95, 0.78], glow: 0.3 });
-    }
-    lights.push({ x: m.angel.x + 0.5, y: m.angel.y + 0.1, r: 1.9, a: 0.85, c: [0.86, 0.9, 1], glow: 0.2 });
-    lights.push({ x: m.start.x + 0.5, y: m.start.y + 0.5, r: 1.2, a: 0.6, c: [1, 0.5, 0.5], glow: 0.25 });
-    lights.push(
-      this.portalOpen
-        ? { x: m.portal.x + 0.5, y: m.portal.y + 0.3, r: 4.4, a: 1, c: [1, 0.95, 0.8], glow: 0.45 }
-        : { x: m.portal.x + 0.5, y: m.portal.y + 0.5, r: 1.5, a: 0.55, c: [1, 0.45, 0.45], glow: 0.25 },
-    );
-    for (const sp of m.sparkles) {
-      const q = (Math.sin(t * 3 + sp.x * 1.7 + sp.y) + 1) / 2;
-      lights.push({ x: sp.x + 0.5, y: sp.y + 0.5, r: 0.5 + q * 0.6, a: 0.7, c: [1, 1, 1], glow: 0.3 * q });
-    }
-
+    const lights = this.lights();
     for (const li of lights) {
-      const cx = (li.x * TILE - wx0) / k;
-      const cy = (li.y * TILE - wy0) / k;
-      const r = (li.r * TILE) / k;
-      const bx0 = Math.max(0, Math.floor(cx - r));
-      const bx1 = Math.min(w - 1, Math.ceil(cx + r));
-      const by0 = Math.max(0, Math.floor(cy - r));
-      const by1 = Math.min(h - 1, Math.ceil(cy + r));
-      if (bx0 > bx1 || by0 > by1) continue;
-      const inv = 1 / (r * r);
+      const R = li.r * TILE;
+      const inv = 1 / (R * R);
+      const bx0 = Math.max(0, Math.floor((li.x - R) / C) - cx0);
+      const bx1 = Math.min(w - 1, Math.ceil((li.x + R) / C) - cx0);
+      const by0 = Math.max(0, Math.floor((li.y - R) / C) - cy0);
+      const by1 = Math.min(h - 1, Math.ceil((li.y + R) / C) - cy0);
       const [cr, cg, cb] = li.c;
-      const glowing = li.glow;
       for (let y = by0; y <= by1; y++) {
-        const dy = y + 0.5 - cy;
-        const dy2 = dy * dy;
-        let o = y * w + bx0;
-        for (let x = bx0; x <= bx1; x++, o++) {
-          const dx = x + 0.5 - cx;
-          const d2 = (dx * dx + dy2) * inv;
+        const py = (cy0 + y + 0.5) * C;
+        const dy2 = (py - li.y) * (py - li.y);
+        for (let x = bx0; x <= bx1; x++) {
+          const px = (cx0 + x + 0.5) * C;
+          const d2 = ((px - li.x) * (px - li.x) + dy2) * inv;
           if (d2 >= 1) continue;
+          if (li.shadow && !this.sight(li.x, li.y, px, py)) continue;
           const f = 1 - d2;
-          const v = li.a * f * (0.55 + 0.45 * f);
+          const v = li.a * f * f;
+          const o = y * w + x;
           intensity[o] += v;
           red[o] += v * cr;
           green[o] += v * cg;
           blue[o] += v * cb;
-          if (glowing) bloom[o] += glowing * f * f * f;
         }
       }
     }
 
-    const ambient = 0.17 + (1 - dark) * 0.6;
-    const memory = 0.17 * darkMul;
-    const shade = new Uint32Array(L.shade.data.buffer);
-    const glow = new Uint32Array(L.glow.data.buffer);
-    glow.fill(0xff000000, 0, n);
+    const ambient = 0.3 + (1 - dark) * 0.6;
+    const memory = 0.15 * darkMul;
+    const shade = new Uint32Array(L.image.data.buffer);
+    const bloom = new Uint32Array(L.bloom!.data.buffer);
     const seen = this.seen;
-    // Which tiles each column reads from, and how far between them.
-    const col0 = new Int32Array(w);
-    const col1 = new Int32Array(w);
-    const colT = new Float32Array(w);
-    for (let x = 0; x < w; x++) {
-      const fx = (wx0 + (x + 0.5) * k) / TILE - 0.5;
-      const tx = Math.floor(fx);
-      col0[x] = tx < 0 ? 0 : tx > COLS - 1 ? COLS - 1 : tx;
-      col1[x] = tx + 1 < 0 ? 0 : tx + 1 > COLS - 1 ? COLS - 1 : tx + 1;
-      colT[x] = fx - tx;
-    }
-    const row = new Float32Array(COLS);
     for (let y = 0; y < h; y++) {
-      const fy = (wy0 + (y + 0.5) * k) / TILE - 0.5;
-      const ty = Math.floor(fy);
-      const ay = fy - ty;
-      const r0 = (ty < 0 ? 0 : ty > ROWS - 1 ? ROWS - 1 : ty) * COLS;
-      const r1 = (ty + 1 < 0 ? 0 : ty + 1 > ROWS - 1 ? ROWS - 1 : ty + 1) * COLS;
-      for (let c = 0; c < COLS; c++) row[c] = seen[r0 + c] + (seen[r1 + c] - seen[r0 + c]) * ay;
-      const bayerRow = (y & 3) * 4;
+      const ty = Math.min(ROWS - 1, Math.max(0, Math.floor((cy0 + y) / 4)));
       for (let x = 0; x < w; x++) {
         const o = y * w + x;
-        const s0 = row[col0[x]];
-        const base = ambient + memory * (s0 + (row[col1[x]] - s0) * colT[x]);
-        const bay = BAYER[bayerRow + (x & 3)];
-        const I = intensity[o];
+        const tx = Math.min(COLS - 1, Math.max(0, Math.floor((cx0 + x) / 4)));
+        const base = ambient + memory * seen[ty * COLS + tx];
         let r = base * 0.6;
         let g = base * 0.7;
         let b = base;
+        const I = intensity[o];
+        let add = 0xff000000;
         if (I > 0) {
-          const inv = 1 / I;
-          const hr = red[o] * inv;
-          const hg = green[o] * inv;
-          const hb = blue[o] * inv;
-          const v = I * 1.35;
-          let lit = ((v > 1 ? 1 : v) * BAND + 0.5 + (bay - 0.5) * 0.12) | 0;
-          lit = lit > BAND ? 1 : lit / BAND;
+          const k = 1 / I;
+          const lit = I * 1.5 > 1 ? 1 : I * 1.5;
+          const hr = red[o] * k;
+          const hg = green[o] * k;
+          const hb = blue[o] * k;
           r += (hr - r) * lit;
           g += (hg - g) * lit;
           b += (hb - b) * lit;
-          const q = bloom[o];
-          if (q > 0.01) {
-            const gl = q > 1 ? 255 : q * 255;
-            glow[o] = 0xff000000 | ((hb * gl) << 16) | ((hg * gl) << 8) | (hr * gl);
-          }
+          const q = lit * lit * 0.15 * darkMul * 255;
+          add = 0xff000000 | ((hb * hb * q) << 16) | ((hg * hg * q) << 8) | (hr * hr * q);
         }
+        bloom[o] = add;
         shade[o] = 0xff000000 | ((b > 1 ? 255 : b * 255) << 16) | ((g > 1 ? 255 : g * 255) << 8) | (r > 1 ? 255 : r * 255);
       }
     }
-    lc.getContext("2d")!.putImageData(L.shade, 0, 0);
-    gc.getContext("2d")!.putImageData(L.glow, 0, 0);
+    const lctx = lc.getContext("2d")!;
+    lctx.putImageData(L.image, 0, 0);
+    lctx.putImageData(L.bloom!, 0, h + 2);
 
-    ctx.setTransform(s * k, 0, 0, s * k, ox + wx0 * s, oy + wy0 * s);
-    ctx.imageSmoothingEnabled = false;
+    ctx.setTransform(s, 0, 0, s, ox, oy);
+    ctx.imageSmoothingEnabled = true;
     ctx.globalCompositeOperation = "multiply";
-    ctx.drawImage(lc, 0, 0, w, h, 0, 0, w, h);
+    ctx.drawImage(lc, 0, 0, w, h, cx0 * C, cy0 * C, w * C, h * C);
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = darkMul;
-    ctx.drawImage(gc, 0, 0, w, h, 0, 0, w, h);
-    ctx.globalAlpha = 1;
+    ctx.drawImage(lc, 0, h + 2, w, h, cx0 * C, cy0 * C, w * C, h * C);
+
+    // Glow, and on wet nights its reflection on the ground.
+    ctx.globalCompositeOperation = "lighter";
+    for (const li of lights) {
+      if (li.glow <= 0) continue;
+      const [cr, cg, cb] = li.c.map((v) => Math.round(Math.min(1, v) * 255));
+      const g = ctx.createRadialGradient(li.gx, li.gy, 0, li.gx, li.gy, li.gr);
+      g.addColorStop(0, `rgba(${cr},${cg},${cb},${li.glow * darkMul})`);
+      g.addColorStop(0.35, `rgba(${cr},${cg},${cb},${li.glow * 0.35 * darkMul})`);
+      g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(li.gx - li.gr, li.gy - li.gr, li.gr * 2, li.gr * 2);
+      if (this.rainy && li.shadow) {
+        ctx.save();
+        ctx.translate(li.x, li.y + 6);
+        ctx.scale(0.35, 1);
+        const wet = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
+        wet.addColorStop(0, `rgba(${cr},${cg},${cb},${0.16 * darkMul})`);
+        wet.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+        ctx.fillStyle = wet;
+        ctx.fillRect(-16, -16, 32, 32);
+        ctx.restore();
+      }
+    }
     ctx.globalCompositeOperation = "source-over";
   }
 
-  private renderWeather(ctx: CanvasRenderingContext2D, reveal: number, s: number, ox: number, oy: number) {
-    const alpha = reveal < 0 ? 1 : 1 - clamp(reveal / 1.5);
-    if (alpha > 0 && this.drops.length) {
-      // In world pixels, so the weather has the same pixel size as everything else.
-      ctx.setTransform(s, 0, 0, s, ox, oy);
-      const vx = -ox / s;
-      const vy = -oy / s;
-      const vw = this.cw / s;
-      const vh = this.ch / s;
-      for (const d of this.drops) {
-        const x = Math.floor(vx + d.x * vw);
-        const y = Math.floor(vy + d.y * vh);
-        if (d.color === "lluvia") {
-          ctx.fillStyle = `rgba(178,200,224,${(0.34 + this.flash * 0.4) * alpha})`;
-          ctx.fillRect(x, y, 1, 3);
-          ctx.fillRect(x - 1, y + 3, 1, 3);
-        } else if (d.color === "#ffe6a8") {
-          const k = (Math.sin(this.time * 2 + d.phase) + 1) / 2;
-          ctx.fillStyle = `rgba(255,230,168,${(0.3 + k * 0.5) * alpha})`;
-          ctx.fillRect(x, y, 1, 1);
-        } else {
-          const flat = Math.cos(d.rot) > 0;
-          ctx.globalAlpha = 0.9 * alpha;
-          ctx.fillStyle = d.color;
-          ctx.fillRect(x, y, flat ? 2 : 1, flat ? 1 : 2);
-          ctx.globalAlpha = 1;
-        }
-      }
-    }
+  private renderWeather(ctx: CanvasRenderingContext2D, reveal: number) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const w = this.cw;
     const h = this.ch;
+    const alpha = reveal < 0 ? 1 : 1 - clamp(reveal / 1.5);
+    if (alpha > 0) {
+      ctx.lineCap = "round";
+      ctx.strokeStyle = `rgba(182,202,226,${(0.26 + this.flash * 0.3) * alpha})`;
+      ctx.lineWidth = Math.max(1, this.dpr * 0.85);
+      ctx.beginPath();
+      for (const d of this.drops) {
+        if (d.color !== "lluvia") continue;
+        ctx.moveTo(d.x * w, d.y * h);
+        ctx.lineTo(d.x * w + d.vx * d.size * w * 0.6, d.y * h + d.size * h);
+      }
+      ctx.stroke();
+      for (const d of this.drops) {
+        if (d.color === "lluvia") continue;
+        if (d.color === "#ffe6a8") {
+          const k = (Math.sin(this.time * 2 + d.phase) + 1) / 2;
+          ctx.fillStyle = `rgba(255,230,168,${(0.25 + k * 0.45) * alpha})`;
+          ctx.beginPath();
+          ctx.arc(d.x * w, d.y * h, d.size * this.dpr * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.save();
+          ctx.translate(d.x * w, d.y * h);
+          ctx.rotate(d.rot);
+          ctx.globalAlpha = 0.85 * alpha;
+          ctx.fillStyle = d.color;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, d.size * this.dpr * 1.6, d.size * this.dpr * 0.8 * Math.abs(Math.cos(d.rot * 1.7)) + 0.4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
     if (this.flash > 0 && reveal < 0) {
-      ctx.fillStyle = `rgba(220,230,255,${this.flash * (this.o.reducedMotion ? 0.08 : 0.2)})`;
+      ctx.fillStyle = `rgba(220,230,255,${this.flash * (this.o.reducedMotion ? 0.08 : 0.22)})`;
       ctx.fillRect(0, 0, w, h);
     }
     if (reveal < 0) {
       const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.38, w / 2, h / 2, Math.hypot(w, h) * 0.56);
       v.addColorStop(0, "rgba(2,3,5,0)");
-      v.addColorStop(1, "rgba(2,3,5,0.6)");
+      v.addColorStop(1, "rgba(2,3,5,0.62)");
       ctx.fillStyle = v;
       ctx.fillRect(0, 0, w, h);
     }
@@ -2090,7 +2140,9 @@ export class Engine {
       const k = (Math.sin(this.time * 3 + m.phase) + 1) / 2;
       const [r, g, b] = rgb(m.color);
       ctx.fillStyle = `rgba(${r},${g},${b},${0.4 + k * 0.5})`;
-      ctx.fillRect(m.x * w, m.y * h, m.size * this.dpr, m.size * this.dpr);
+      ctx.beginPath();
+      ctx.arc(m.x * w, m.y * h, m.size * this.dpr * 0.6, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 

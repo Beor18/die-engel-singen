@@ -1,10 +1,7 @@
 /**
- * Hand-made pixel art. Each sprite is a list of rows where every character is
- * a color from its palette, and "." is transparent. Rows shorter than the
- * sprite width are padded, so a typo can't break the game.
- *
- * Light comes from the top left: highlights on that side, shade on the other,
- * and a dark outline around everything so characters read on any floor.
+ * Small hand-made figures, drawn only if the painted images of public/juego/arte
+ * fail to load. Each sprite is a list of rows where every character is a color
+ * from its palette, and "." is transparent.
  */
 
 type Palette = Record<string, string>;
@@ -240,123 +237,6 @@ function mix(hex: string, other: string, amount: number) {
   return `#${out.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
-const discs = new Map<string, HTMLCanvasElement>();
-
-/** A filled pixel circle of radius `r`, cached. */
-export function disc(r: number, color: string) {
-  const key = `${r}${color}`;
-  let c = discs.get(key);
-  if (!c) {
-    c = makeCanvas(2 * r + 1, 2 * r + 1);
-    const g = c.getContext("2d")!;
-    g.fillStyle = color;
-    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r + r * 0.8) g.fillRect(x + r, y + r, 1, 1);
-    discs.set(key, c);
-  }
-  return c;
-}
-
-/** A filled pixel ellipse, cached. Used for shadows on the ground. */
-export function ellipse(rx: number, ry: number, color: string) {
-  const key = `e${rx},${ry}${color}`;
-  let c = discs.get(key);
-  if (!c) {
-    c = makeCanvas(2 * rx + 1, 2 * ry + 1);
-    const g = c.getContext("2d")!;
-    g.fillStyle = color;
-    for (let y = -ry; y <= ry; y++) {
-      for (let x = -rx; x <= rx; x++) {
-        const dx = x / (rx + 0.5);
-        const dy = y / (ry + 0.5);
-        if (dx * dx + dy * dy <= 1) g.fillRect(x + rx, y + ry, 1, 1);
-      }
-    }
-    discs.set(key, c);
-  }
-  return c;
-}
-
-/** The book's four-pointed star as crisp pixels, with a light core and an outline. */
-function star(scale: number, fill: string, core: string, outline: string) {
-  // Taller than wide, like the star in the book; at small sizes a square one reads as a cross.
-  const sx = scale * 0.72;
-  const sy = scale * 1.15;
-  const h = Math.ceil(18 * sy) + 1;
-  const w = Math.ceil(14 * sx) + 1;
-  const shape = makeCanvas(w, h);
-  const s = shape.getContext("2d", { willReadFrequently: true })!;
-  s.translate(w / 2, h / 2);
-  s.scale(sx, sy);
-  s.fillStyle = "#000";
-  s.fill(new Path2D(STAR));
-  const alpha = s.getImageData(0, 0, w, h).data;
-  const solid = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && alpha[(y * w + x) * 4 + 3] > 110;
-  const out = makeCanvas(w + 2, h + 2);
-  const g = out.getContext("2d")!;
-  const cx = Math.floor(w / 2);
-  const cy = Math.floor(h / 2);
-  for (let y = -1; y <= h; y++) {
-    for (let x = -1; x <= w; x++) {
-      if (solid(x, y)) {
-        const near = Math.abs(x - cx) * 1.6 + Math.abs(y - cy) <= Math.max(1, Math.round(scale * 2));
-        g.fillStyle = near ? core : fill;
-      } else if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) {
-        g.fillStyle = outline;
-      } else continue;
-      g.fillRect(x + 1, y + 1, 1, 1);
-    }
-  }
-  return out;
-}
-
-const SMOKE_DARK = "#06030a";
-const SMOKE_BODY = "#1b1126";
-const SMOKE_LIGHT = "#33223f";
-
-/** Where a shadow's eyes are, from the point where it stands. */
-export const SMOKE_EYES = [
-  [-3, -9],
-  [2, -9],
-] as const;
-
-/**
- * A shadow: a knot of smoke that never holds still. Puffs are drawn first as
- * outlines, then filled, so they merge into one silhouette.
- */
-export function drawSmoke(ctx: CanvasRenderingContext2D, cx: number, cy: number, t: number, phase: number, calm = 1) {
-  const core = [
-    [0, -8, 5],
-    [-3, -4, 4],
-    [3, -4, 4],
-    [0, -12, 3],
-    [-3, -1, 3],
-    [3, -1, 3],
-  ];
-  const puffs: number[][] = core.map(([x, y, r], k) => [
-    x + Math.sin(t * 2.1 + phase + k) * 0.9 * calm,
-    y + Math.cos(t * 1.7 + phase + k * 1.3) * 0.9 * calm,
-    r,
-  ]);
-  for (let k = 0; k < 3; k++) {
-    const s = (t * 1.2 + phase + k / 3) % 1;
-    puffs.push([(k - 1) * 3 + Math.sin(t * 3 + k) * calm, 2 + s * 3, s < 0.5 ? 2 : 1]);
-  }
-  for (const [x, y, r] of puffs) ctx.drawImage(disc(r + 1, SMOKE_DARK), Math.round(cx + x) - r - 1, Math.round(cy + y) - r - 1);
-  for (const [x, y, r] of puffs) ctx.drawImage(disc(r, SMOKE_BODY), Math.round(cx + x) - r, Math.round(cy + y) - r);
-  for (const [x, y, r] of puffs.slice(0, 4)) {
-    if (r >= 3) ctx.drawImage(disc(r - 2, SMOKE_LIGHT), Math.round(cx + x) - r + 1, Math.round(cy + y) - r + 1);
-  }
-  const alpha = ctx.globalAlpha;
-  ctx.fillStyle = SMOKE_BODY;
-  for (let k = 0; k < 4; k++) {
-    const s = (t * 0.7 + phase * 0.3 + k / 4) % 1;
-    ctx.globalAlpha = alpha * (1 - s);
-    const size = 1 + (k & 1);
-    ctx.fillRect(Math.round(cx + Math.sin(k * 2.4 + t * 1.5) * 4), Math.round(cy - 15 - s * 9), size, size);
-  }
-  ctx.globalAlpha = alpha;
-}
-
 export type Sprites = {
   /** Per direction: standing, then two steps. */
   voice: Record<"up" | "down" | "left" | "right", HTMLCanvasElement[]>;
@@ -364,9 +244,6 @@ export type Sprites = {
   angel: HTMLCanvasElement[];
   feather: HTMLCanvasElement;
   lamp: (color: string, lit: boolean, frame: number) => HTMLCanvasElement;
-  starRed: HTMLCanvasElement;
-  starBig: HTMLCanvasElement;
-  starGold: HTMLCanvasElement;
 };
 
 function withFeet(rows: Rows, feet: string, bottom: number) {
@@ -415,9 +292,6 @@ export function buildSprites(): Sprites {
       }
       return c;
     },
-    starRed: star(0.62, "#98121a", "#d8373f", "#2a0508"),
-    starBig: star(0.9, "#98121a", "#d8373f", "#2a0508"),
-    starGold: star(0.9, "#f2cf7a", "#fffaf0", "#5a3e10"),
   };
 }
 
