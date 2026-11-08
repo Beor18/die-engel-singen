@@ -20,6 +20,7 @@ Cada página trae una imagen de 941 x 1672 px, extraída sin recomprimir a `publ
 | 13 | `el-rey-de-papel.png` | EL REY DE PAPEL | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 | 14 | `spiegel.png` | SPIEGEL | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 | 15 | `dosis.png` | DOSIS | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
+| 16 | `prision.png` | PRISIÓN | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 
 ## Medidas tomadas del PDF
 
@@ -39,7 +40,7 @@ Estas medidas salen de los comandos de dibujo del propio PDF y se usan tal cual 
 
 Por pedido del autor, todos los adornos van del rojo de la estrella de la portada, `#98121A`, con trazo de 1,2 pt como en la portada. En el PDF son blancos, con trazo de 0,65 pt.
 
-Los adornos integrados en las imágenes de Platz Eins y Guten Appetit, y las líneas de Pills Bajo Control, se recolorearon píxel a píxel. Esas tres imágenes llevan `-rojo` en el nombre y el resto de cada imagen quedó idéntico al original. Los adornos de Prohibido, Morgen, El rey de papel, Spiegel y Dosis ya venían rojos, pero más brillantes: se llevaron al mismo tono.
+Los adornos integrados en las imágenes de Platz Eins y Guten Appetit, y las líneas de Pills Bajo Control, se recolorearon píxel a píxel. Esas tres imágenes llevan `-rojo` en el nombre y el resto de cada imagen quedó idéntico al original. Los adornos de Prohibido, Morgen, El rey de papel, Spiegel, Dosis y Prisión ya venían rojos, pero más brillantes: se llevaron al mismo tono. El de Prisión tiene dos líneas a cada lado y se respetó así.
 
 ## Particularidades del original
 

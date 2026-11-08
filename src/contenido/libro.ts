@@ -704,4 +704,59 @@ aquello que por un momento nos hace sentir.
       ],
     },
   },
+  {
+    id: "prision",
+    orden: 15,
+    tipo: "poema",
+    titulo: "PRISIÓN",
+    imagen: {
+      src: "/libro/prision.png",
+      alt: "Un pasillo oscuro termina en una puerta cerrada; por la rendija y por debajo se filtra una luz roja. En las paredes se adivinan sombras de figuras. En el piso mojado, delante de la puerta, hay una llave antigua. Arriba y abajo asoman telas de terciopelo rojo.",
+    },
+    texto: `
+Vivo en una prisión
+sin barrotes ni cadenas.
+Las paredes tienen oídos
+y la libertad está de visita.
+
+Discusiones por acá,
+amenazas por allá.
+Me acusan de ser el monstruo.
+
+El juez, el verdugo y el testigo
+tenían la misma cara.
+
+A veces cuesta sobrevivir,
+a veces cuesta decidir.
+No sé si abrir la puerta.
+
+Pero me dieron la llave.
+
+Después cambiaron la cerradura.
+`,
+    significado: {
+      texto: `
+«Prisión»: cuando te ofrecen una salida,
+pero alguien más decide si podés usarla.
+`,
+      enLaImagen: true,
+    },
+    tono: "#e2452f",
+    clima: {
+      particulas: [{ tipo: "polen", cantidad: 0.4 }],
+      zonas: [
+        { tipo: "nube", x: 0.1, y: 0.3, rx: 0.1, ry: 0.18, fuerza: 0.35, velocidad: 0.3 },
+        { tipo: "nube", x: 0.9, y: 0.32, rx: 0.1, ry: 0.2, fuerza: 0.35, velocidad: 0.28 },
+        { tipo: "viento", x: 0.15, y: 0.03, rx: 0.15, ry: 0.04, fuerza: 0.6, velocidad: 0.6 },
+        { tipo: "luz", x: 0.08, y: 0.6, rx: 0.08, ry: 0.12, fuerza: 0.12, velocidad: 0.5, color: "#ff1a20" },
+        { tipo: "luz", x: 0.92, y: 0.55, rx: 0.08, ry: 0.1, fuerza: 0.12, velocidad: 0.45, color: "#ff1a20" },
+        { tipo: "luz", x: 0.583, y: 0.62, rx: 0.015, ry: 0.13, fuerza: 0.25, velocidad: 1.2, color: "#ff4a2a" },
+        { tipo: "luz", x: 0.53, y: 0.735, rx: 0.07, ry: 0.015, fuerza: 0.3, velocidad: 0.9, color: "#ffb070" },
+        { tipo: "centelleo", x: 0.49, y: 0.61, rx: 0.02, ry: 0.02, fuerza: 0.4, velocidad: 0.7 },
+        { tipo: "agua", x: 0.5, y: 0.765, rx: 0.25, ry: 0.02, fuerza: 0.6, velocidad: 0.6 },
+        { tipo: "centelleo", x: 0.4, y: 0.81, rx: 0.06, ry: 0.015, fuerza: 0.6, velocidad: 0.8 },
+        { tipo: "nube", x: 0.1, y: 0.83, rx: 0.1, ry: 0.04, fuerza: 0.35, velocidad: 0.3 },
+      ],
+    },
+  },
 ];
