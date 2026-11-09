@@ -38,6 +38,7 @@ const LEVELS: LevelSource[] = POEMAS.map((p, i) => ({
   meaning: p.lineasSignificado,
   tone: p.tono,
   weather: p.clima ?? {},
+  scene: p.escena,
 }));
 
 export default function GamePage() {

@@ -90,6 +90,23 @@ que significa «cortar» o «resolver». (la primera sin
 titulo)
 `,
     },
+    escena: {
+      lugar: "campo",
+      elementos: [
+        { imagen: "cartel", nombre: "Cartel", x: 0.6, y: 0.78, alto: 2.1, dice: ["Un cartel con dos flechas que apuntan a lados opuestos. Ninguna dice adónde lleva."] },
+        {
+          imagen: "viajero",
+          nombre: "Viajero",
+          persona: true,
+          x: 0.3,
+          y: 0.8,
+          alto: 1.7,
+          dice: ["Yo también me quedé parado en esta curva. Elegí con el corazón, y el camino se volvió un lugar bonito.", "Andá tranquilo. El sol todavía no se fue."],
+        },
+        { imagen: "arbol", nombre: "Árbol", x: 0.82, y: 0.6, alto: 3.4, mueve: "viento", dice: ["Un árbol solo en medio del campo. Alguien eligió plantarlo acá."] },
+        { imagen: "pastos", nombre: "Pasto", x: 0.2, y: 0.9, alto: 1.1, pasable: true, mueve: "viento", copias: 16, dice: [] },
+      ],
+    },
     tono: "#f0913e",
     clima: {
       particulas: [{ tipo: "polen" }],
@@ -143,6 +160,24 @@ Ich weiß es nicht" es una frase en alemán que
 significa «no lo sé» (No se)
 `,
     },
+    escena: {
+      lugar: "camino",
+      elementos: [
+        {
+          imagen: "caminante",
+          nombre: "Alguien",
+          persona: true,
+          x: 0.5,
+          y: 0.8,
+          alto: 2,
+          mueve: "seAleja",
+          hasta: { x: 0.5, y: 0.42 },
+          dice: ["No sé qué hora es. Tampoco sé desde cuándo camino.", "Si me quedo quieto es peor. ¿Vos sabés adónde vas?"],
+        },
+        { imagen: "reloj", nombre: "Reloj", x: 0.25, y: 0.62, alto: 3.1, dice: ["Un reloj de calle. Las agujas se quedaron quietas en una hora que nadie recuerda."] },
+        { imagen: "banco", nombre: "Banco", x: 0.74, y: 0.7, alto: 1.3, ancho: 2, dice: ["Un banco mojado. Nadie se sienta a esperar con esta lluvia."] },
+      ],
+    },
     tono: "#8fb0c8",
     clima: {
       particulas: [{ tipo: "lluvia" }],
@@ -195,6 +230,35 @@ aun siendo distintos.
 significa «mujer y hombre» (Entre Opuestos)
 `,
     },
+    escena: {
+      lugar: "camino",
+      elementos: [
+        {
+          imagen: "hombre-opuesto",
+          nombre: "Él",
+          persona: true,
+          x: 0.22,
+          y: 0.86,
+          alto: 2.1,
+          mueve: "seAcerca",
+          hasta: { x: 0.47, y: 0.86 },
+          dice: ["Ella dice todo lo que siente. Yo me lo guardo.", "Pero cada verso que encontrás me acerca un paso a ella."],
+        },
+        {
+          imagen: "mujer-opuesta",
+          nombre: "Ella",
+          persona: true,
+          x: 0.78,
+          y: 0.86,
+          alto: 1.95,
+          mueve: "seAcerca",
+          hasta: { x: 0.53, y: 0.86 },
+          dice: ["Él busca calma y yo no sé quedarme quieta.", "No queremos parecernos. Queremos encontrarnos."],
+        },
+        { imagen: "cerco", nombre: "Cerco", x: 0.1, y: 0.7, alto: 1.4, pasable: true, copias: 4, dice: [] },
+        { imagen: "arbusto", nombre: "Arbusto", x: 0.9, y: 0.6, alto: 1.2, pasable: true, mueve: "viento", copias: 6, dice: [] },
+      ],
+    },
     tono: "#a9bcc6",
     clima: {
       particulas: [{ tipo: "lluvia", cantidad: 0.85 }],
@@ -237,6 +301,24 @@ que representa la dualidad de la experiencia y los
 altibajos inevitables de la vida. (Marathon)
 `,
     },
+    escena: {
+      lugar: "camino",
+      elementos: [
+        {
+          imagen: "corredor",
+          nombre: "Corredor",
+          persona: true,
+          x: 0.48,
+          y: 0.8,
+          alto: 2,
+          mueve: "corre",
+          hasta: { x: 0.5, y: 0.3 },
+          dice: ["No puedo parar. Si paro, los años me alcanzan.", "¿Ves esa luz entre las nubes? Llego ahí y descanso. Eso digo siempre."],
+        },
+        { imagen: "mojon", nombre: "Mojón", x: 0.28, y: 0.66, alto: 1.2, dice: ["Un mojón al costado de la ruta. Los números se borraron de tanto llover."] },
+        { imagen: "baranda", nombre: "Baranda", x: 0.75, y: 0.7, alto: 1.1, pasable: true, copias: 3, dice: [] },
+      ],
+    },
     tono: "#d9e2e6",
     clima: {
       particulas: [{ tipo: "lluvia" }],
@@ -278,6 +360,32 @@ Ven conmigo, te haré bien
 "Ausländer" proviene de aus (fuera) y Land
 (tierra/país) y significa Extranjero. (Extranjero)
 `,
+    },
+    escena: {
+      lugar: "calle",
+      elementos: [
+        {
+          imagen: "pareja-paraguas",
+          nombre: "La pareja",
+          persona: true,
+          x: 0.7,
+          y: 0.8,
+          alto: 2.1,
+          mueve: "seAleja",
+          hasta: { x: 0.68, y: 0.4 },
+          dice: ["En cada ciudad aprendí a decir te quiero de otra manera.", "Acá los dos somos extranjeros. Juntos, un poco menos."],
+        },
+        {
+          imagen: "mesa-cafe",
+          nombre: "Mesa del café",
+          x: 0.16,
+          y: 0.72,
+          alto: 1.6,
+          luz: { color: "#ffb35c", alcance: 2.4, altura: 0.6 },
+          dice: ["Una mesa de café, todavía tibia. Alguien dejó una taza a medio tomar."],
+        },
+        { imagen: "maceta", nombre: "Maceta", x: 0.3, y: 0.62, alto: 1.3, copias: 2, dice: ["Una maceta con flores rojas. Son lo único seco de toda la calle."] },
+      ],
     },
     tono: "#f2b866",
     clima: {
@@ -328,6 +436,32 @@ la soledad en un instante de compañía
 `,
       banda: "solida",
     },
+    escena: {
+      lugar: "calle",
+      elementos: [
+        {
+          imagen: "hombre-sombrero",
+          nombre: "Hombre de sombrero",
+          persona: true,
+          x: 0.84,
+          y: 0.76,
+          alto: 2.2,
+          dice: ["Acá todo tiene precio. Lo único gratis es la lluvia.", "Adentro nadie pregunta tu nombre. Afuera, nadie lo recuerda."],
+        },
+        {
+          imagen: "bar",
+          nombre: "Bar",
+          x: 0.12,
+          y: 0.72,
+          alto: 2.9,
+          ancho: 2,
+          mueve: "titila",
+          luz: { color: "#ff2a3a", alcance: 3.6, altura: 0.85 },
+          dice: ["La puerta del bar. Adentro suena una música que no termina nunca."],
+        },
+        { imagen: "barril", nombre: "Barril", x: 0.26, y: 0.78, alto: 1.4, dice: ["Un barril con dos copas. Una tiene marca de rouge."] },
+      ],
+    },
     tono: "#e5343f",
     clima: {
       particulas: [{ tipo: "lluvia", cantidad: 0.9 }],
@@ -372,6 +506,44 @@ aunque cuesta permanecer en ella.
 `,
       enLaImagen: true,
     },
+    escena: {
+      lugar: "salon",
+      elementos: [
+        {
+          imagen: "hombre-traje",
+          nombre: "Hombre de traje",
+          persona: true,
+          x: 0.5,
+          y: 0.62,
+          alto: 2.2,
+          mueve: "quieto",
+          dice: ["Llegué primero. Todos me aplaudieron.", "Después se fueron a festejar a otro lado. Desde acá arriba no se ve a nadie."],
+        },
+        {
+          imagen: "invitada",
+          nombre: "Invitada",
+          persona: true,
+          x: 0.28,
+          y: 0.7,
+          alto: 2.1,
+          mueve: "baila",
+          dice: ["¿Quién? ¿El del primer puesto? Ni idea, pero qué linda fiesta."],
+        },
+        {
+          imagen: "invitado",
+          nombre: "Invitado",
+          persona: true,
+          x: 0.74,
+          y: 0.55,
+          alto: 2.2,
+          mueve: "baila",
+          dice: ["Brindo por él. Bah, por quien sea, mientras haya champán."],
+        },
+        { imagen: "mesa-champan", nombre: "Mesa", x: 0.64, y: 0.8, alto: 2, dice: ["Una botella de champán en hielo. Las copas están llenas, pero nadie brinda."] },
+        { nombre: "Luz roja", x: 0.3, y: 0.45, mueve: "gira", luz: { color: "#ff2448", alcance: 4 }, dice: [] },
+        { nombre: "Luz azul", x: 0.7, y: 0.4, mueve: "gira", luz: { color: "#3a6bff", alcance: 4 }, dice: [] },
+      ],
+    },
     tono: "#e8bd60",
     clima: {
       particulas: [{ tipo: "confeti" }],
@@ -413,6 +585,34 @@ Todos parecen felices.
 una forma de escapar de lo que se siente.
 `,
       banda: "solida",
+    },
+    escena: {
+      lugar: "cuarto",
+      elementos: [
+        {
+          imagen: "hombre-fuma",
+          nombre: "Hombre",
+          persona: true,
+          x: 0.2,
+          y: 0.74,
+          alto: 2,
+          mueve: "fuma",
+          humo: { x: 0.46, y: 0.1 },
+          dice: ["Ya no cuento cuántas tomo. Las cuenta el frasco.", "La ciudad nunca duerme. A veces la envidio."],
+        },
+        {
+          imagen: "mesa-pastillas",
+          nombre: "Mesa",
+          x: 0.55,
+          y: 0.87,
+          alto: 1.4,
+          mueve: "fuma",
+          humo: { x: 0.3, y: 0.13 },
+          dice: ["Un cenicero lleno y un frasco volcado. Las pastillas brillan como las luces de la ciudad."],
+        },
+        { nombre: "Luces de la ciudad", x: 0.86, y: 0.55, luz: { color: "#3d7dff", alcance: 4.5 }, dice: [] },
+        { nombre: "Neón", x: 0.74, y: 0.68, mueve: "titila", luz: { color: "#ff3355", alcance: 3 }, dice: [] },
+      ],
     },
     tono: "#5db8ff",
     clima: {
@@ -456,6 +656,51 @@ Pero dejaron los platos.
 donde algunos comen y otros solo sirven.
 `,
       enLaImagen: true,
+    },
+    escena: {
+      lugar: "salon",
+      elementos: [
+        {
+          imagen: "mesa-banquete",
+          nombre: "Mesa",
+          x: 0.32,
+          y: 0.72,
+          alto: 3.2,
+          ancho: 4,
+          mueve: "llama",
+          luz: { color: "#ffb347", alcance: 3.2, altura: 0.75 },
+          dice: ["La mesa está puesta para todos. Hay un plato servido para cada uno, menos para uno."],
+        },
+        { imagen: "silla-dorada", nombre: "Silla dorada", x: 0.8, y: 0.78, alto: 1.9, dice: ["Una silla dorada, vacía. Es la tuya, pero nadie te la ofrece."] },
+        {
+          imagen: "comensal",
+          nombre: "Comensal",
+          persona: true,
+          x: 0.56,
+          y: 0.55,
+          alto: 2.2,
+          dice: ["Qué cena. ¿Quién cocinó? Bueno, no importa. Salud."],
+        },
+        {
+          imagen: "comensal-dama",
+          nombre: "Invitada",
+          persona: true,
+          x: 0.72,
+          y: 0.6,
+          alto: 2.1,
+          dice: ["Las sillas ya están repartidas, querido. Quizás la próxima."],
+        },
+        {
+          imagen: "candelabro",
+          nombre: "Candelabro",
+          x: 0.14,
+          y: 0.5,
+          alto: 2.6,
+          mueve: "llama",
+          luz: { color: "#ffb347", alcance: 3, altura: 0.9 },
+          dice: ["Un candelabro con cinco velas. La cera cae sobre el mantel y nadie la limpia."],
+        },
+      ],
     },
     tono: "#e6b15c",
     clima: {
@@ -506,6 +751,41 @@ y desean cuando cae la noche.
 `,
       enLaImagen: true,
     },
+    escena: {
+      lugar: "salon",
+      elementos: [
+        { imagen: "telon", nombre: "Telón", x: 0.07, y: 0.5, alto: 3.6, dice: ["Un telón de terciopelo rojo. Del otro lado se escucha una música baja."] },
+        { imagen: "telon", nombre: "Telón", x: 0.93, y: 0.5, alto: 3.6, espejado: true, dice: [] },
+        {
+          imagen: "pareja-sombras",
+          nombre: "La pareja",
+          persona: true,
+          x: 0.5,
+          y: 0.6,
+          alto: 2.1,
+          dice: ["Shh. Acá no estamos.", "Lo prohibido tiene la mejor luz. Por eso apagamos todas."],
+        },
+        {
+          imagen: "lampara-roja",
+          nombre: "Lámpara roja",
+          x: 0.66,
+          y: 0.54,
+          alto: 2.6,
+          luz: { color: "#ff2d2d", alcance: 3.4, altura: 0.85 },
+          dice: ["Una lámpara roja. Tiñe todo, hasta lo que no se dice."],
+        },
+        { imagen: "mesa-rosa", nombre: "Mesa", x: 0.22, y: 0.85, alto: 1.4, dice: ["Un vaso a medio terminar y una rosa. Alguien se fue apurado, o alguien no llegó."] },
+        {
+          imagen: "puerta",
+          nombre: "Puerta",
+          x: 0.84,
+          y: 0.7,
+          alto: 2.7,
+          luz: { color: "#ffcf8a", alcance: 2.6, altura: 0.5 },
+          dice: ["Una puerta entreabierta. Por la rendija se escapa un poco de luz."],
+        },
+      ],
+    },
     tono: "#d61f2c",
     clima: {
       zonas: [
@@ -546,6 +826,33 @@ La noche cumplió su promesa.
 cuando amanece y el amor comienza a hablar.
 `,
       enLaImagen: true,
+    },
+    escena: {
+      lugar: "cuarto",
+      elementos: [
+        {
+          imagen: "pareja-ventana",
+          nombre: "La pareja",
+          persona: true,
+          x: 0.8,
+          y: 0.46,
+          alto: 2.2,
+          dice: ["Mirá. Ya amanece.", "Quedate un rato más. El café todavía está caliente."],
+        },
+        { imagen: "cama", nombre: "Cama", x: 0.2, y: 0.62, alto: 1.7, ancho: 2, dice: ["La cama deshecha todavía guarda la forma de dos personas."] },
+        {
+          imagen: "mesa-tazas",
+          nombre: "Mesa",
+          x: 0.36,
+          y: 0.82,
+          alto: 1.4,
+          mueve: "vapor",
+          humo: { x: 0.28, y: 0.16 },
+          dice: ["Dos tazas de café. Todavía humean."],
+        },
+        { imagen: "silla-vestido", nombre: "Silla", x: 0.62, y: 0.82, alto: 1.9, dice: ["Un vestido rojo sobre la silla. Nadie lo levantó desde anoche."] },
+        { nombre: "Amanecer", x: 0.8, y: 0.36, luz: { color: "#ffb070", alcance: 5 }, dice: [] },
+      ],
     },
     tono: "#f2a65a",
     clima: {
@@ -594,6 +901,26 @@ mientras otros deciden qué mostrar.
 `,
       enLaImagen: true,
     },
+    escena: {
+      lugar: "teatro",
+      elementos: [
+        {
+          imagen: "rey",
+          nombre: "Rey de papel",
+          persona: true,
+          x: 0.42,
+          y: 0.74,
+          alto: 2.3,
+          mueve: "marioneta",
+          dice: ["¡Mírenme! Esto es lo que querían, ¿no?", "No puedo bajar la mano. Alguien la sostiene desde arriba."],
+        },
+        { imagen: "publico", nombre: "Público", x: 0.22, y: 0.58, alto: 1.7, ancho: 2, mueve: "aplaude", dice: ["El público aplaude. Ninguno sabe muy bien por qué."] },
+        { imagen: "publico", nombre: "Público", x: 0.7, y: 0.56, alto: 1.7, ancho: 2, mueve: "aplaude", espejado: true, dice: [] },
+        { imagen: "telon", nombre: "Telón", x: 0.06, y: 0.6, alto: 3.6, dice: ["El telón. Detrás, alguien tira de los hilos."] },
+        { imagen: "telon", nombre: "Telón", x: 0.94, y: 0.6, alto: 3.6, espejado: true, dice: [] },
+        { nombre: "Reflector", x: 0.42, y: 0.66, luz: { color: "#ffe2a8", alcance: 3.6 }, dice: [] },
+      ],
+    },
     tono: "#d9333f",
     clima: {
       particulas: [{ tipo: "polen", cantidad: 0.5 }],
@@ -637,6 +964,40 @@ acomodándose la corona.
 en otros lo que todavía no reconocemos en nosotros.
 `,
       enLaImagen: true,
+    },
+    escena: {
+      lugar: "cuarto",
+      elementos: [
+        {
+          imagen: "espejo",
+          nombre: "Espejo",
+          x: 0.46,
+          y: 0.46,
+          alto: 3.2,
+          mueve: "refleja",
+          vidrio: { x: 0.2, y: 0.14, ancho: 0.6, alto: 0.74 },
+          dice: ["Te mirás en el espejo. Por un momento, tu reflejo cierra los ojos y se acomoda una corona de cartón."],
+        },
+        {
+          imagen: "hombre-camisa",
+          nombre: "Hombre",
+          persona: true,
+          x: 0.28,
+          y: 0.52,
+          alto: 2.2,
+          dice: ["Me pregunto si estoy orgulloso. El espejo nunca contesta.", "Esperá, que me acomodo la corona."],
+        },
+        {
+          imagen: "vela-roja",
+          nombre: "Vela roja",
+          x: 0.09,
+          y: 0.42,
+          alto: 1.3,
+          mueve: "llama",
+          luz: { color: "#ff4a2a", alcance: 2.8, altura: 0.9 },
+          dice: ["Una vela roja. Es la única luz del cuarto que no miente."],
+        },
+      ],
     },
     tono: "#c8283a",
     clima: {
@@ -686,6 +1047,32 @@ Así que dame una línea más.
 aquello que por un momento nos hace sentir.
 `,
       enLaImagen: true,
+    },
+    escena: {
+      lugar: "cuarto",
+      elementos: [
+        {
+          imagen: "espejos-arco",
+          nombre: "Espejos",
+          x: 0.14,
+          y: 0.46,
+          alto: 2.7,
+          mueve: "titila",
+          luz: { color: "#ff2840", alcance: 3.2, altura: 0.6 },
+          dice: ["Espejos en arco. Repiten una luz roja que no viene de ningún lado."],
+        },
+        {
+          imagen: "ventana",
+          nombre: "Ventana",
+          x: 0.86,
+          y: 0.4,
+          alto: 2.9,
+          luz: { color: "#4f8dff", alcance: 3.4, altura: 0.55 },
+          dice: ["Una ventana mojada. Afuera, la ciudad sigue como si nada."],
+        },
+        { imagen: "mesa-redonda", nombre: "Mesa", x: 0.45, y: 0.82, alto: 1.5, dice: ["Una copa, un cenicero y una línea blanca sobre la mesa. Nada de esto dura."] },
+        { imagen: "cama", nombre: "Cama", x: 0.68, y: 0.7, alto: 1.7, ancho: 2, dice: ["Una cama deshecha. Nadie durmió en ella."] },
+      ],
     },
     tono: "#5fb2e6",
     clima: {
@@ -740,6 +1127,35 @@ Después cambiaron la cerradura.
 pero alguien más decide si podés usarla.
 `,
       enLaImagen: true,
+    },
+    escena: {
+      lugar: "pasillo",
+      elementos: [
+        {
+          imagen: "puerta-roja",
+          nombre: "Puerta",
+          x: 0.5,
+          y: 0.62,
+          alto: 3.1,
+          ancho: 2,
+          luz: { color: "#ff2020", alcance: 3.2, altura: 0.08 },
+          dice: ["La puerta está cerrada. Por debajo se filtra una luz roja."],
+          conObjeto: { imagen: "llave", dice: ["Probás la llave. Entra, gira… y no abre. Alguien cambió la cerradura."] },
+        },
+        {
+          imagen: "llave",
+          nombre: "Llave",
+          x: 0.6,
+          y: 0.9,
+          alto: 0.45,
+          pasable: true,
+          levantar: true,
+          mueve: "brilla",
+          dice: ["Una llave antigua, mojada. La guardás. Pesa más de lo que parece."],
+        },
+        { imagen: "siluetas", nombre: "Sombras", x: 0.2, y: 0.42, alto: 2.4, ancho: 2, pasable: true, mueve: "sombra", dice: [] },
+        { imagen: "siluetas", nombre: "Sombras", x: 0.8, y: 0.3, alto: 2.4, ancho: 2, pasable: true, mueve: "sombra", espejado: true, dice: [] },
+      ],
     },
     tono: "#e2452f",
     clima: {

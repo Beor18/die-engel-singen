@@ -603,6 +603,17 @@
   object-fit: cover;
 }
 
+/* People of the painting: their whole figure is the image, so the portrait shows the head and shoulders. */
+.retrato-figura {
+  background: radial-gradient(circle at 50% 35%, rgb(70 60 70 / 0.55), rgb(8 8 12) 75%);
+}
+
+.retrato-figura img {
+  object-position: 50% 6%;
+  transform: scale(1.7);
+  transform-origin: 50% 0;
+}
+
 .dialogo-cuerpo {
   flex: 1;
   min-width: 0;

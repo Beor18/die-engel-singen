@@ -417,6 +417,12 @@ export class AudioEngine {
     this.hiss(this.now, 0.05, { freq: soft ? 420 : 700 + Math.random() * 500, q: 1.4, gain: soft ? 0.03 : 0.045, wet: 0 });
   }
 
+  /** One hand clap of an audience, somewhere to the side. */
+  clap(pan: number, gain: number) {
+    if (!this.ctx || gain <= 0.002) return;
+    this.hiss(this.now, 0.04, { freq: 1500 + Math.random() * 900, q: 0.9, gain, pan: pan + (Math.random() - 0.5) * 0.4, wet: 0.35 });
+  }
+
   bump() {
     if (!this.ctx) return;
     this.tone(95, this.now, 0.14, { gain: 0.16, end: 55, wet: 0 });

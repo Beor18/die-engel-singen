@@ -1,3 +1,4 @@
+import type { Lugar } from "@/contenido";
 import { makeCanvas, puff } from "./art";
 import { STAR } from "./sprites";
 
@@ -245,6 +246,31 @@ const FILES = {
 } as const;
 
 let loading: Promise<Painted> | null = null;
+
+/** The floor and walls of each kind of place. Missing ones fall back to the cobblestones and rock. */
+const MATERIALS: Record<Lugar, { ground?: string; rock?: string; face?: string }> = {
+  campo: { ground: "pasto.webp" },
+  camino: { ground: "asfalto.webp" },
+  calle: {},
+  salon: { ground: "marmol.webp", rock: "tapiz.webp", face: "tapiz.webp" },
+  cuarto: { ground: "madera.webp", rock: "tapiz.webp", face: "tapiz.webp" },
+  teatro: { ground: "madera.webp", rock: "tapiz.webp", face: "tapiz.webp" },
+  pasillo: { ground: "losas.webp" },
+};
+
+const materials = new Map<string, Promise<HTMLImageElement | null>>();
+
+/** The textures of a kind of place: floor, top of the walls and front of the walls. */
+export async function loadMaterial(place: Lugar | undefined) {
+  const m = place ? MATERIALS[place] : {};
+  const get = (file?: string) => {
+    if (!file) return Promise.resolve(null);
+    if (!materials.has(file)) materials.set(file, image(`/juego/arte/${file}`));
+    return materials.get(file)!;
+  };
+  const [ground, rock, face] = await Promise.all([get(m.ground), get(m.rock), get(m.face)]);
+  return { ground, rock, face };
+}
 
 function image(src: string) {
   return new Promise<HTMLImageElement | null>((resolve) => {

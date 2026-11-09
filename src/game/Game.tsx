@@ -613,11 +613,11 @@ function Hud({ ui, muted, onPause, onToggleMute }: { ui: UIState; muted: boolean
   );
 }
 
-function Portrait({ speaker }: { speaker: Speaker }) {
-  const src = PORTRAITS[speaker];
+function Portrait({ speaker, image }: { speaker: Speaker; image?: string }) {
+  const src = image ?? PORTRAITS[speaker];
   if (!src) return null;
   return (
-    <span className="retrato">
+    <span className={image ? "retrato retrato-figura" : "retrato"}>
       <Image src={src} alt="" fill sizes="96px" />
     </span>
   );
@@ -663,7 +663,7 @@ function Dialogue({ ui, onNext, touch }: { ui: UIState; onNext: () => void; touc
 
   return (
     <div className={`dialogo dialogo-${d.speaker}`} onClick={onNext}>
-      <Portrait speaker={d.speaker} />
+      <Portrait speaker={d.speaker} image={d.portrait} />
       <div className="dialogo-cuerpo">
         {d.name && <p className="dialogo-nombre">{d.name}</p>}
         <p className="dialogo-texto">

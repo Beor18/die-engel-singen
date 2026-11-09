@@ -38,6 +38,87 @@ export type Clima = {
   zonas?: Zona[];
 };
 
+/** Qué clase de lugar muestra la ilustración. En el juego define el piso y las paredes. */
+export type Lugar = "campo" | "camino" | "calle" | "salon" | "cuarto" | "teatro" | "pasillo";
+
+/** Cómo se mueve un elemento de la escena en el juego. `respira` por defecto en las personas. */
+export type Movimiento =
+  | "respira"
+  /** No se mueve nada: alguien inmóvil o un objeto. */
+  | "quieto"
+  /** Sale humo de `humo`, como de un cigarrillo. */
+  | "fuma"
+  /** Sale vapor de `humo`, como de una taza. */
+  | "vapor"
+  /** Se aleja caminando hasta `hasta`, se pierde y vuelve a empezar. */
+  | "seAleja"
+  /** Igual que `seAleja`, pero corriendo. */
+  | "corre"
+  | "baila"
+  | "aplaude"
+  /** Cuelga de hilos rojos, como una marioneta. */
+  | "marioneta"
+  /** Se mece con el viento. */
+  | "viento"
+  /** Se acerca a `hasta` a medida que encontrás versos. */
+  | "seAcerca"
+  /** Su luz titila, como un neón. */
+  | "titila"
+  /** Una luz sin imagen que da vueltas, como las de una fiesta. */
+  | "gira"
+  /** Su llama tiembla. */
+  | "llama"
+  /** Un espejo: muestra a la Voz cuando se para delante. `vidrio` dice dónde está el vidrio. */
+  | "refleja"
+  /** Una sombra pegada a la pared, que apenas se mueve. */
+  | "sombra"
+  /** Brilla cada tanto, como algo mojado. */
+  | "brilla";
+
+/** Un personaje u objeto de la ilustración que aparece dentro del nivel. */
+export type ElementoEscena = {
+  /** Imagen en /public/juego/escenas, sin la extensión. Sin imagen, es solo una luz. */
+  imagen?: string;
+  /** Cómo se llama en el diálogo. */
+  nombre: string;
+  /** Si es una persona, habla ella; si no, lo describe el narrador. */
+  persona?: boolean;
+  /** Dónde está en la ilustración, de 0 a 1 como las zonas del clima. */
+  x: number;
+  y: number;
+  /** Alto en casillas del juego. La Voz mide 1,75. */
+  alto?: number;
+  /** Cuántas casillas ocupa de ancho. 1 por defecto. */
+  ancho?: number;
+  /** Se puede pasar por encima, como una llave en el piso o el pasto. */
+  pasable?: boolean;
+  /** Dar vuelta la imagen. */
+  espejado?: boolean;
+  mueve?: Movimiento;
+  /** Adónde va con `seAleja`, `corre` y `seAcerca`, en coordenadas de la ilustración. */
+  hasta?: { x: number; y: number };
+  /** La luz que da: color, alcance en casillas y a qué altura de la imagen nace (0 abajo, 1 arriba). */
+  luz?: { color: string; alcance: number; altura?: number };
+  /** De dónde sale el humo o el vapor, de 0 a 1 sobre la imagen. */
+  humo?: { x: number; y: number };
+  /** Para `refleja`: el vidrio del espejo, de 0 a 1 sobre la imagen. */
+  vidrio?: { x: number; y: number; ancho: number; alto: number };
+  /** Copias desparramadas por el nivel, además de esta. Las copias no se pueden mirar. */
+  copias?: number;
+  /** Se levanta al pisarlo y queda guardado, como una llave. */
+  levantar?: boolean;
+  /** Lo que dice si es una persona, o lo que se ve al mirarlo. Vacío: no se puede mirar. */
+  dice: string[];
+  /** Lo que se dice en cambio si la Voz ya levantó el elemento con esa imagen. */
+  conObjeto?: { imagen: string; dice: string[] };
+};
+
+/** Lo que muestra la ilustración, para que el juego lo ponga dentro del nivel. */
+export type Escena = {
+  lugar: Lugar;
+  elementos: ElementoEscena[];
+};
+
 export type PaginaFuente = {
   /** Identificador único: es también la dirección, /poema/<id>. */
   id: string;
@@ -79,6 +160,8 @@ export type PaginaFuente = {
     descripcion?: string;
   };
   clima?: Clima;
+  /** Personajes y objetos de la ilustración que aparecen en el juego. */
+  escena?: Escena;
 };
 
 export type Pagina = PaginaFuente & {

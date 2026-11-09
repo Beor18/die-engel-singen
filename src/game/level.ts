@@ -1,4 +1,4 @@
-import type { Zona } from "@/contenido";
+import type { Lugar, Zona } from "@/contenido";
 import { createRng, hash, pick, shuffle, type Rng } from "./rng";
 import type { LevelSource, Point } from "./types";
 
@@ -26,8 +26,29 @@ export const FLOOR = 0;
 export const WALL = 1;
 export const WATER = 2;
 export const GLOOM = 3;
+/** Places with a roof: their floor and walls are of a room, and they have no loose rocks. */
+export const INDOORS = new Set<Lugar>(["salon", "cuarto", "teatro"]);
+
+/** Floor taken by something of the painting that can't be walked through: a table, a bed, a person. */
+export const PROP = 4;
 
 export type Lamp = Point & { color: string; radius: number };
+
+/** Something of the painting placed in the level: one element of the page's scene, or a copy of it. */
+export type Prop = {
+  /** Which element of the scene it is. */
+  index: number;
+  /** A scattered copy: only decoration, it can't be examined. */
+  copy: boolean;
+  /** The tile it stands on; wide things spread to both sides of it. */
+  x: number;
+  y: number;
+  width: number;
+  /** Whether its tiles are marked as PROP. People who walk are never marked: they block as they go. */
+  solid: boolean;
+  /** For those that walk: the tiles from where they start to where they go. */
+  route: Point[];
+};
 export type Verse = Point & { index: number; lines: string[] };
 export type ShadowSpawn = Point & { name: string };
 export type Fog = { x: number; y: number; rx: number; ry: number; color: string };
@@ -44,7 +65,103 @@ export type GameMap = {
   sparkles: Point[];
   fogs: Fog[];
   darkness: number;
+  props: Prop[];
 };
+
+/** The tiles a thing `width` tiles wide covers when it stands on (x, y). */
+export function footprint(x: number, y: number, width: number): Point[] {
+  const left = x - Math.floor((width - 1) / 2);
+  return Array.from({ length: width }, (_, k) => ({ x: left + k, y }));
+}
+
+const MOVERS = new Set(["seAleja", "corre", "seAcerca"]);
+
+/**
+ * Puts the people and things of the painting where the painting has them, on
+ * the nearest free floor. Nothing may cut the way: a solid thing that would
+ * leave any tile out of reach goes somewhere else.
+ */
+function placeScene(r: Rng, cells: Uint8Array, source: LevelSource, keep: (p: Point) => boolean): Prop[] {
+  const elements = source.scene?.elementos ?? [];
+  const props: Prop[] = [];
+  const taken = new Uint8Array(COLS * ROWS);
+  const free = (p: Point) =>
+    p.x > 0 && p.y > 0 && p.x < COLS - 1 && p.y < ROWS - 1 && (cells[at(p.x, p.y)] === FLOOR || cells[at(p.x, p.y)] === GLOOM) && !taken[at(p.x, p.y)] && keep(p);
+
+  const settle = (index: number, x: number, y: number, width: number, solid: boolean, copy: boolean): Prop | null => {
+    const tiles = footprint(x, y, width);
+    if (!tiles.every(free)) return null;
+    if (solid) {
+      const before = countReachable(cells, { x: Math.floor(COLS / 2), y: Math.round(ROWS * 0.87) });
+      const saved = tiles.map((t) => cells[at(t.x, t.y)]);
+      for (const t of tiles) cells[at(t.x, t.y)] = PROP;
+      if (countReachable(cells, { x: Math.floor(COLS / 2), y: Math.round(ROWS * 0.87) }) !== before - width) {
+        tiles.forEach((t, k) => (cells[at(t.x, t.y)] = saved[k]));
+        return null;
+      }
+    }
+    // Leave a little room around each thing, so they don't crowd together.
+    const ring = copy ? 0 : 1;
+    for (const t of tiles) {
+      for (let dy = -ring; dy <= ring; dy++) {
+        for (let dx = -ring; dx <= ring; dx++) if (inside(t.x + dx, t.y + dy)) taken[at(t.x + dx, t.y + dy)] = 1;
+      }
+    }
+    return { index, x, y, width, solid, copy, route: [] };
+  };
+
+  // Nearest spot to (cx, cy) where it fits, searching outward.
+  const near = (index: number, cx: number, cy: number, width: number, solid: boolean) => {
+    for (let radius = 0; radius < 16; radius++) {
+      for (let y = cy - radius; y <= cy + radius; y++) {
+        for (let x = cx - radius; x <= cx + radius; x++) {
+          if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== radius) continue;
+          const placed = settle(index, x, y, width, solid, false);
+          if (placed) return placed;
+        }
+      }
+    }
+    return null;
+  };
+
+  elements.forEach((el, index) => {
+    const cx = Math.round(el.x * COLS - 0.5);
+    const cy = Math.round(el.y * ROWS - 0.5);
+    const width = el.ancho ?? 1;
+    const moves = MOVERS.has(el.mueve ?? "");
+    const solid = !el.pasable && !moves && Boolean(el.imagen);
+    const placed = near(index, cx, cy, width, solid);
+    if (!placed) return;
+    if (moves && el.hasta) {
+      const target = nearestFloor(cells, Math.round(el.hasta.x * COLS - 0.5), Math.round(el.hasta.y * ROWS - 0.5));
+      const route = target && findPath(cells, placed, target);
+      if (route) placed.route = [{ x: placed.x, y: placed.y }, ...route];
+    }
+    props.push(placed);
+    // Copies, scattered over the level; decoration likes the edges of the walls.
+    const copies = el.copias ?? 0;
+    if (!copies) return;
+    const spots: Point[] = [];
+    for (let y = 2; y < ROWS - 2; y++) {
+      for (let x = 2; x < COLS - 2; x++) {
+        let edge = false;
+        for (const [dx, dy] of NEIGHBORS) if (cells[at(x + dx, y + dy)] === WALL) edge = true;
+        if (edge && free({ x, y })) spots.push({ x, y });
+      }
+    }
+    let made = 0;
+    for (const s of shuffle(r, spots)) {
+      if (made >= copies) break;
+      if (props.some((p) => p.index === index && cheb(p, s) < 4)) continue;
+      const copy = settle(index, s.x, s.y, width, false, true);
+      if (copy) {
+        props.push(copy);
+        made++;
+      }
+    }
+  });
+  return props;
+}
 
 /** Names of the shadows, shown to the player. */
 const SHADOW_NAMES = [
@@ -319,8 +436,9 @@ export function generateMap(source: LevelSource, sample: Uint8ClampedArray, diff
   for (let i = 0; i < N; i++) cells[i] = value[i] >= threshold ? FLOOR : WALL;
   for (let k = 0; k < 3; k++) cells = smooth(cells);
 
-  // Loose pillars in very open spaces, so they don't feel like empty plains.
-  for (let y = 2; y < ROWS - 2; y++) {
+  // Loose pillars in very open spaces, so they don't feel like empty plains. Indoors, the furniture does that.
+  const indoors = INDOORS.has(source.scene?.lugar ?? "calle");
+  for (let y = 2; y < ROWS - 2 && !indoors; y++) {
     for (let x = 2; x < COLS - 2; x++) {
       let open = 0;
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (cells[at(x + dx, y + dy)] === FLOOR) open++;
@@ -379,8 +497,8 @@ export function generateMap(source: LevelSource, sample: Uint8ClampedArray, diff
     lamps.push({ ...p, color: z.color ?? tone, radius: 3.2 });
     if (lamps.length >= 4) break;
   }
-  const fromStart = distances(cells, start);
-  const reachable: number[] = [];
+  let fromStart = distances(cells, start);
+  let reachable: number[] = [];
   for (let i = 0; i < N; i++) if (fromStart[i] >= 0) reachable.push(i);
   const farthest = Math.max(...reachable.map((i) => fromStart[i]));
   for (const share of [0.38, 0.7]) {
@@ -405,11 +523,19 @@ export function generateMap(source: LevelSource, sample: Uint8ClampedArray, diff
   }
   cells[at(angel.x, angel.y)] = FLOOR;
 
+  // The people and things of the painting. Solid ones change the ways, so distances are measured again.
+  const props = placeScene(r, cells, source, (p) => cheb(p, start) > 1 && cheb(p, angel) > 1 && cheb(p, portal) > 2 && !lamps.some((l) => cheb(l, p) <= 1));
+  const occupied = new Set<number>();
+  for (const pr of props) for (const t of footprint(pr.x, pr.y, pr.width)) occupied.add(at(t.x, t.y));
+  fromStart = distances(cells, start);
+  reachable = [];
+  for (let i = 0; i < N; i++) if (fromStart[i] >= 0) reachable.push(i);
+
   // Verses, spread out and far from the start.
   const groups = groupVerses(source.stanzas);
   const candidates = reachable.filter((i) => {
     const p = toPoint(i);
-    return fromStart[i] >= 6 && cheb(p, portal) > 2 && !lamps.some((l) => l.x === p.x && l.y === p.y);
+    return fromStart[i] >= 6 && cheb(p, portal) > 2 && !occupied.has(i) && !lamps.some((l) => l.x === p.x && l.y === p.y);
   });
   const spots = spreadOut(r, cells, candidates, fromStart, groups.length);
   const verses: Verse[] = spots.map((p, i) => ({ ...p, index: i, lines: groups[i] }));
@@ -421,7 +547,7 @@ export function generateMap(source: LevelSource, sample: Uint8ClampedArray, diff
   for (const i of shuffle(r, [...reachable])) {
     if (shadows.length >= count) break;
     const p = toPoint(i);
-    if (fromStart[i] < 10 || lamps.some((l) => cheb(l, p) <= 3)) continue;
+    if (fromStart[i] < 10 || occupied.has(i) || lamps.some((l) => cheb(l, p) <= 3)) continue;
     if (verses.some((v) => v.x === p.x && v.y === p.y)) continue;
     if (shadows.some((s) => Math.abs(s.x - p.x) + Math.abs(s.y - p.y) < 6)) continue;
     shadows.push({ ...p, name: names[shadows.length % names.length] });
@@ -444,5 +570,5 @@ export function generateMap(source: LevelSource, sample: Uint8ClampedArray, diff
   const average = total / N;
   const darkness = Math.min(0.94, Math.max(0.8, 0.97 - average * 0.5));
 
-  return { cells, lum, start, portal, angel, verses, lamps, shadows, sparkles, fogs, darkness };
+  return { cells, lum, start, portal, angel, verses, lamps, shadows, sparkles, fogs, darkness, props };
 }

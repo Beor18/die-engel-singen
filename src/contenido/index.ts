@@ -2,7 +2,7 @@ import { PAGINAS_FUENTE } from "./libro";
 import type { Pagina, PaginaFuente } from "./tipos";
 
 export { LIBRO } from "./libro";
-export type { Pagina, Particulas, Zona, Clima } from "./tipos";
+export type { Pagina, Particulas, Zona, Clima, Escena, ElementoEscena, Lugar, Movimiento } from "./tipos";
 
 const lineas = (texto: string) => texto.trim().split("\n").map((l) => l.trim());
 

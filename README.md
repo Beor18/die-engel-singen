@@ -135,19 +135,48 @@ En `/juego` está **La Voz**, un juego hecho con el libro. Sos la última luz en
 | `particulas` y `relampagos` | La lluvia, los pétalos, el polen y los relámpagos del nivel |
 | `tono` | El color de la página |
 | `alt` de la imagen | La descripción con que empieza el nivel |
+| `escena` | Los personajes y objetos de la pintura, adentro del nivel, y el tipo de lugar |
 
 El mismo id genera siempre el mismo mapa. Los niveles se juegan en el orden del libro y la dificultad sube con el número de página.
 
+### La escena de un nivel
+
+Lo que muestra la pintura aparece adentro del nivel, en el lugar donde está en la pintura: las personas se pueden saludar, los objetos se pueden mirar, y al revelar la página quedan justo sobre su dibujo. Después de hablar con alguien, una estela de luz te muestra el verso más cercano.
+
+```ts
+escena: {
+  lugar: "cuarto", // campo, camino, calle, salon, cuarto, teatro o pasillo: cambia el piso y las paredes
+  elementos: [
+    {
+      imagen: "hombre-fuma", // public/juego/escenas/hombre-fuma.webp
+      nombre: "Hombre",
+      persona: true, // habla él; sin esto, lo describe el narrador
+      x: 0.2, y: 0.74, // dónde está en la pintura, de 0 a 1
+      alto: 2, // en casillas; la Voz mide 1,75
+      mueve: "fuma",
+      humo: { x: 0.46, y: 0.1 }, // de dónde sale el humo, sobre la imagen
+      dice: ["Ya no cuento cuántas tomo. Las cuenta el frasco."],
+    },
+    { nombre: "Neón", x: 0.74, y: 0.68, mueve: "titila", luz: { color: "#ff3355", alcance: 3 }, dice: [] },
+  ],
+},
+```
+
+- **`mueve`**: `respira`, `quieto`, `fuma`, `vapor`, `seAleja` y `corre` (hacia `hasta`), `seAcerca` (hacia `hasta`, un paso por cada verso), `baila`, `aplaude`, `marioneta`, `viento`, `titila`, `gira`, `llama`, `refleja` (un espejo, con `vidrio`), `sombra` y `brilla`.
+- **Otros campos**: `ancho` en casillas, `pasable`, `espejado`, `luz` con `color`, `alcance` y `altura`, `copias` para desparramar decoración, `levantar` para algo que se guarda al pisarlo, y `conObjeto` para lo que se dice si ya se levantó otra cosa (la llave y la puerta de PRISIÓN).
+- **Imágenes**: se generaron con ChatGPT a partir de la ilustración de cada página, en hojas de una fila sobre fondo transparente, y se cortaron en un WebP por elemento. Si falta una imagen, una persona se dibuja como silueta y un objeto no aparece.
+
 - **Controles:** flechas o WASD para caminar y Espacio para hablar o cantar. Esc pausa y M silencia. En celular hay un círculo para caminar, un botón ✦, y también se puede tocar adonde ir.
 - **Sonido:** todo se sintetiza en el navegador, sin archivos. Hay volumen general, música y efectos, y se guarda en el navegador junto con el progreso.
-- **Gráficos:** estilo pintado y realista. Cada nivel se pinta en el navegador a partir de su página: adoquines mojados teñidos con los colores de la pintura, paredes de roca con volumen y sombra, agua, niebla que se mueve y charcos cuando llueve. La luz del farol de la Voz y la de los faroles proyecta sombras detrás de las paredes y las rocas, y lo que ya recorriste queda apenas visible. La Voz camina de verdad: sus piernas se recortan de la pintura al cargar y dan pasos, mientras la capa se mece y el cuerpo sube y baja con cada paso.
-- **Imágenes:** todas se generaron con ChatGPT. Los retratos y la portada están en `public/juego/`; las texturas y las figuras del mundo (la Voz en tres poses, el ángel, el farol, la pluma y la roca), en `public/juego/arte/`. Si alguna no carga, el juego dibuja una figura más simple. La imagen para compartir, `/juego/compartir.jpg`, se arma al compilar.
+- **Gráficos:** estilo pintado y realista. Cada nivel se pinta en el navegador a partir de su página: un piso según el lugar (tierra de campo, asfalto, adoquines, mármol, madera o losas) teñido con los colores de la pintura, paredes de papel tapiz en los interiores, paredes de roca con volumen y sombra, agua, niebla que se mueve y charcos cuando llueve. La luz del farol de la Voz y la de los faroles proyecta sombras detrás de las paredes y las rocas, y lo que ya recorriste queda apenas visible. La Voz camina de verdad: sus piernas se recortan de la pintura al cargar y dan pasos, mientras la capa se mece y el cuerpo sube y baja con cada paso.
+- **Imágenes:** todas se generaron con ChatGPT. Los retratos y la portada están en `public/juego/`; las texturas y las figuras del mundo (la Voz en tres poses, el ángel, el farol, la pluma, la roca y los pisos y paredes de cada `lugar`), en `public/juego/arte/`; los personajes y objetos de cada pintura, en `public/juego/escenas/`. Si alguna no carga, el juego dibuja una figura más simple. La imagen para compartir, `/juego/compartir.jpg`, se arma al compilar.
 - **Pruebas:** con `/juego?prueba=1`, la consola tiene `__laVoz` con atajos para juntar los versos, pelear o revelar la página.
 
 ```
 src/game/level.ts    Genera el mapa de un nivel a partir de su página
 src/game/art.ts      Pinta el mundo del nivel a partir de su página: piso, paredes, agua y niebla
-src/game/painted.ts  Carga las figuras pintadas y dibuja el humo de las sombras y la estrella
+src/game/painted.ts  Carga las figuras pintadas y los pisos de cada lugar; dibuja la Voz, el humo de las sombras y la estrella
+src/game/scene.ts    Carga los personajes y objetos de cada pintura y dibuja su humo, sus hilos y la corona
 src/game/engine.ts   Exploración, batallas, luces y revelación, en canvas
 src/game/audio.ts    Coro, música de batalla y efectos con Web Audio
 src/game/sprites.ts  Figuras de repuesto, por si no cargan las pintadas

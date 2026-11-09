@@ -10,16 +10,34 @@ import {
   WALL,
   WATER,
   at,
+  distances,
   findPath,
+  footprint,
   generateMap,
+  INDOORS,
   inside,
   walkable,
   type GameMap,
   type Lamp,
+  type Prop,
   type Verse,
 } from "./level";
+import { drawCrown, drawSilhouette, drawStrings, drawWisps, loadSceneArt, type SceneArt } from "./scene";
+import type { ElementoEscena } from "@/contenido";
 import { createRng, hash, pick, type Rng } from "./rng";
-import { drawSmoke, drawStar, drawVoice, groundShadow, loadPainted, SMOKE_EYES, stand, voicePose, type Painted, type View } from "./painted";
+import {
+  drawSmoke,
+  drawStar,
+  drawVoice,
+  groundShadow,
+  loadMaterial,
+  loadPainted,
+  SMOKE_EYES,
+  stand,
+  voicePose,
+  type Painted,
+  type View,
+} from "./painted";
 import { buildSprites, LAMP_HEIGHT, type Sprites } from "./sprites";
 import type { BattleOption, BattleUI, Dir, LevelSource, Point, Speaker, UIState } from "./types";
 
@@ -55,13 +73,29 @@ const NAMES: Record<Speaker, string> = {
   guardian: "Guardián",
   narrator: "",
   verse: "Verso",
+  figure: "",
 };
 
-type Line = { speaker: Speaker; text: string; name?: string; veiled?: boolean };
+type Line = { speaker: Speaker; text: string; name?: string; veiled?: boolean; portrait?: string };
 type Mode = "loading" | "intro" | "explore" | "dialogue" | "battle" | "reveal" | "blackout" | "error";
 
 type Actor = { x: number; y: number; fromX: number; fromY: number; t: number; moving: boolean; duration: number; dir: Dir };
 type Shadow = Actor & { name: string; home: Point; timer: number; stunned: number; alive: boolean; phase: number };
+/** Someone or something of the painting, inside the level. */
+type Thing = Actor & {
+  prop: Prop;
+  el: ElementoEscena;
+  /** How far along its route it is. */
+  step: number;
+  /** 1 when it is fully there; people who walk away fade out at the end and start over. */
+  fade: number;
+  phase: number;
+  picked: boolean;
+  /** How long it has waited for the way to clear. */
+  wait: number;
+};
+/** Light motes going from someone toward the nearest missing verse. */
+type Trail = { points: Point[]; age: number };
 
 type Battle = {
   guardian: boolean;
@@ -220,6 +254,14 @@ export class Engine {
   private time = 0;
   private player: Actor = { x: 0, y: 0, fromX: 0, fromY: 0, t: 1, moving: false, duration: STEP_TIME, dir: "up" };
   private walkClock = 0;
+  private things: Thing[] = [];
+  private sceneArt: SceneArt = new Map();
+  /** The images of what the Voice has picked up, like a key. */
+  private carried = new Set<string>();
+  private trail: Trail | null = null;
+  /** Someone the Voice is walking to, to talk once it gets there. */
+  private pendingTalk: Thing | null = null;
+  private clapTimer = 0;
   /** 0 while the Voice stands, 1 while it walks; eases between them so the legs settle. */
   private walkBlend = 0;
   /** How far the Voice's body is moved by its walk this frame, in world pixels, for the lantern. */
@@ -359,6 +401,31 @@ export class Engine {
       this.interact();
       return;
     }
+    // Someone or something of the painting: walk up to it and talk.
+    const touched = this.thingOnScreen(wx, wy);
+    if (touched) {
+      const tiles = this.thingTiles(touched);
+      const beside = tiles.find((q) => manhattan(q, p) === 1);
+      if (beside) {
+        p.dir = (Object.keys(DELTA) as Dir[]).find((d) => p.x + DELTA[d].x === beside.x && p.y + DELTA[d].y === beside.y) ?? p.dir;
+        this.examine(touched);
+        return;
+      }
+      let best: Point[] | null = null;
+      for (const q of tiles) {
+        for (const d of Object.values(DELTA)) {
+          const n = { x: q.x + d.x, y: q.y + d.y };
+          if (this.blocksPlayer(n)) continue;
+          const route = findPath(this.map.cells, p, n, (x, y) => this.blocksPlayer({ x, y }));
+          if (route && (!best || route.length < best.length)) best = route;
+        }
+      }
+      if (best) {
+        this.path = best;
+        this.pendingTalk = touched;
+        return;
+      }
+    }
     const route = findPath(this.map.cells, p, target, (x, y) => this.blocksPlayer({ x, y }));
     if (route?.length) this.path = route;
   }
@@ -405,6 +472,24 @@ export class Engine {
       return c.toDataURL();
     },
     state: () => ({ mode: this.mode, player: { x: this.player.x, y: this.player.y }, light: this.light, verses: this.collected.size }),
+    /** The people and things of the painting in this level. */
+    things: () => this.things.map((th) => ({ name: th.el.nombre, x: th.x, y: th.y, copy: th.prop.copy, image: th.el.imagen ?? null })),
+    /** Puts the Voice on a tile, to check what happens there. */
+    goto: (x: number, y: number, dir: Dir = "up") => {
+      this.player = { ...this.player, x, y, fromX: x, fromY: y, t: 1, moving: false, dir };
+    },
+    /** Shows the whole level lit, from afar, to check where everything is. */
+    overview: (scale = 1.1) => {
+      this.scale = scale;
+      this.map.darkness = 0;
+      this.seen.fill(1);
+    },
+    /** Takes them out of the level, to compare how fast it draws without them. */
+    clearScene: () => {
+      this.things = [];
+    },
+    /** Talks to one of them, as if the Voice were beside it. */
+    talk: (i: number) => this.things[i] && this.examine(this.things[i]),
     /** Where the Voice's feet are on screen, in device pixels. */
     feet: () => {
       const v = this.view();
@@ -418,9 +503,13 @@ export class Engine {
   private async load(session: number) {
     try {
       const src = this.o.level.image;
-      const [image, painted] = await Promise.all([
+      const names = (this.o.level.scene?.elementos ?? []).flatMap((e) => (e.imagen ? [e.imagen] : []));
+      const place = this.o.level.scene?.lugar;
+      const [image, painted, sceneArt, material] = await Promise.all([
         this.loadImage(`/_next/image?url=${encodeURIComponent(src)}&w=640&q=75`).catch(() => this.loadImage(src)),
         loadPainted(),
+        loadSceneArt(names),
+        loadMaterial(place),
       ]);
       if (session !== this.session) return;
       this.painting = image;
@@ -437,12 +526,19 @@ export class Engine {
       const particles = this.o.level.weather.particulas ?? [];
       this.rainy = particles.some((p) => p.tipo === "lluvia");
       this.paintedArt = painted;
-      this.art = buildWorldArt(image, this.map, { ground: painted.ground, rock: painted.rock, boulder: painted.boulder }, {
-        seed: hash(this.o.level.id),
-        tone: this.o.level.tone,
-        rain: this.rainy,
-        petals: particles.some((p) => p.tipo === "petalos"),
-      });
+      this.sceneArt = sceneArt;
+      this.art = buildWorldArt(
+        image,
+        this.map,
+        { ground: material.ground ?? painted.ground, rock: material.rock ?? painted.rock, boulder: painted.boulder, face: material.face },
+        {
+          seed: hash(this.o.level.id),
+          tone: this.o.level.tone,
+          rain: this.rainy,
+          petals: particles.some((p) => p.tipo === "petalos"),
+          indoors: place ? INDOORS.has(place) : false,
+        },
+      );
       this.fog = fogTile(hash(this.o.level.id) ^ 0x6f);
       this.seen.fill(0);
       this.blurred = canvas(27, 48);
@@ -470,6 +566,27 @@ export class Engine {
         alive: true,
         phase: this.rng() * 6,
       }));
+      const elements = this.o.level.scene?.elementos ?? [];
+      this.things = m.props.map((prop, i) => ({
+        x: prop.x,
+        y: prop.y,
+        fromX: prop.x,
+        fromY: prop.y,
+        t: 1,
+        moving: false,
+        duration: 0.5,
+        dir: "up",
+        prop,
+        el: elements[prop.index],
+        step: 0,
+        fade: 1,
+        phase: (i * 1.618) % 6.28,
+        picked: false,
+        wait: 0,
+      }));
+      this.carried.clear();
+      this.trail = null;
+      this.pendingTalk = null;
 
       this.key = this.musicalKey();
       const audio = this.o.audio;
@@ -612,6 +729,10 @@ export class Engine {
       }
     }
     this.updateWeather(dt);
+    if (this.trail) {
+      this.trail.age += dt;
+      if (this.trail.age > 7) this.trail = null;
+    }
     if (this.mode !== "battle" && this.mode !== "reveal") {
       this.updateSeen();
     }
@@ -623,6 +744,7 @@ export class Engine {
         break;
       case "explore":
         this.updatePlayer(dt);
+        this.updateThings(dt);
         this.updateShadows(dt);
         this.updateLightning(dt);
         break;
@@ -688,7 +810,185 @@ export class Engine {
 
   private blocksPlayer(p: Point) {
     if (!inside(p.x, p.y) || !walkable(this.map.cells[at(p.x, p.y)])) return true;
+    // People of the painting who walk are echoes: the Voice and the shadows pass through them, so they never close the way.
     return this.isAngel(p) || Boolean(this.lampAt(p));
+  }
+
+  /** The tiles a thing covers now. */
+  private thingTiles(th: Thing) {
+    return th.prop.route.length > 1 ? [{ x: th.x, y: th.y }] : footprint(th.x, th.y, th.prop.width);
+  }
+
+  /** Where a thing is drawn, in world pixels: the middle of its base, its height and width, and its image. */
+  private thingBox(th: Thing) {
+    const w = th.prop.width;
+    const left = th.x - Math.floor((w - 1) / 2);
+    const img = th.el.imagen ? this.sceneArt.get(th.el.imagen) : undefined;
+    const cx = (left + w / 2 + lerp(th.fromX, th.x, th.t) - th.x) * TILE;
+    const base = lerp(th.fromY, th.y, th.t) * TILE + 15;
+    let h = (th.el.alto ?? 1.8) * TILE;
+    let width = img ? (h * img.naturalWidth) / img.naturalHeight : w * TILE * 0.7;
+    // Wide things fill their tiles, unless that would make them taller than they are.
+    if (img && w > 1) {
+      width = w * TILE * 1.08;
+      h = (width * img.naturalHeight) / img.naturalWidth;
+      const tallest = (th.el.alto ?? 1.8) * TILE * 1.25;
+      if (h > tallest) {
+        width *= tallest / h;
+        h = tallest;
+      }
+    }
+    return { cx, base, h, width, img };
+  }
+
+  /** What of the painting is drawn under a point of the world, to talk to it by touching it. */
+  private thingOnScreen(wx: number, wy: number) {
+    let best: Thing | null = null;
+    for (const th of this.things) {
+      if (th.prop.copy || th.picked || !th.el.dice.length || th.fade < 0.3) continue;
+      const b = this.thingBox(th);
+      if (Math.abs(wx - b.cx) > b.width / 2 || wy > b.base + 2 || wy < b.base - b.h) continue;
+      if (!best || th.y > best.y) best = th;
+    }
+    return best;
+  }
+
+  private stepThing(th: Thing, step: number, duration: number) {
+    const to = th.prop.route[step];
+    th.dir = to.x > th.x ? "right" : to.x < th.x ? "left" : to.y > th.y ? "down" : "up";
+    th.fromX = th.x;
+    th.fromY = th.y;
+    th.x = to.x;
+    th.y = to.y;
+    th.step = step;
+    th.t = 0;
+    th.moving = true;
+    th.duration = duration;
+  }
+
+  /** People of the painting who walk: away from the Voice, or toward each other as verses come back. */
+  private updateThings(dt: number) {
+    const p = this.player;
+    const total = Math.max(1, this.map.verses.length);
+    for (const th of this.things) {
+      const route = th.prop.route;
+      if (th.el.mueve === "aplaude" && !th.prop.copy && cheb(th, p) <= 6) {
+        this.clapTimer -= dt;
+        if (this.clapTimer <= 0) {
+          this.clapTimer = 0.05 + this.rng() * 0.12;
+          this.o.audio.clap(clamp((th.x - p.x) / 6, -1, 1), 0.05 * (1 - cheb(th, p) / 7));
+        }
+      }
+      if (route.length < 2) continue;
+      if (th.moving) {
+        th.t += dt / th.duration;
+        if (th.t >= 1) {
+          th.t = 1;
+          th.moving = false;
+        }
+        continue;
+      }
+      if (th.el.mueve === "seAcerca") {
+        const goal = Math.round((this.collected.size / total) * (route.length - 1));
+        const next = route[th.step + 1];
+        if (th.step < goal && next && !(next.x === p.x && next.y === p.y)) this.stepThing(th, th.step + 1, 0.8);
+        continue;
+      }
+      // Walks away; at the end it fades into the dark and starts over.
+      const last = th.step >= route.length - 1;
+      if (last) {
+        th.fade -= dt * 0.7;
+        if (th.fade <= 0) {
+          const home = route[0];
+          th.fade = 0;
+          if (cheb(home, p) <= 1) continue;
+          th.step = 0;
+          th.x = th.fromX = home.x;
+          th.y = th.fromY = home.y;
+        }
+        continue;
+      }
+      th.fade = Math.min(1, th.fade + dt * 0.7);
+      if (th.fade < 0.5 || manhattan(th, p) <= 1) continue;
+      const next = route[th.step + 1];
+      if (next.x === p.x && next.y === p.y) continue;
+      this.stepThing(th, th.step + 1, th.el.mueve === "corre" ? 0.26 : 0.75);
+    }
+  }
+
+  /** Talks to someone of the painting, or looks at something. People then point the way to a missing verse. */
+  private examine(th: Thing) {
+    const el = th.el;
+    const lines = el.conObjeto && this.carried.has(el.conObjeto.imagen) ? el.conObjeto.dice : el.dice;
+    const portrait = el.persona && el.imagen && this.sceneArt.has(el.imagen) ? `/juego/escenas/${el.imagen}.webp` : undefined;
+    this.path = [];
+    this.say(
+      lines.map((text): Line => (el.persona ? { speaker: "figure", name: el.nombre, text, portrait } : { speaker: "narrator", text })),
+      () => {
+        if (el.persona) this.pointTheWay(th);
+      },
+    );
+  }
+
+  /** Light motes from someone to the nearest verse still missing. */
+  private pointTheWay(th: Thing) {
+    const p = this.player;
+    const d = distances(this.map.cells, p);
+    let best: Verse | null = null;
+    for (const v of this.map.verses) {
+      if (this.collected.has(v.index) || d[at(v.x, v.y)] < 0) continue;
+      if (!best || d[at(v.x, v.y)] < d[at(best.x, best.y)]) best = v;
+    }
+    if (!best) return;
+    const route = findPath(this.map.cells, p, best);
+    if (!route?.length) return;
+    this.trail = { points: [{ x: th.x, y: th.y }, { x: p.x, y: p.y }, ...route], age: 0 };
+    this.showToast("Te señala por dónde seguir.");
+  }
+
+  /** The motes of the trail, flowing toward the verse. Drawn over the dark, like the eyes of the shadows. */
+  private drawTrail(ctx: CanvasRenderingContext2D) {
+    const tr = this.trail;
+    if (!tr) return;
+    const pts = tr.points.map((q) => ({ x: q.x * TILE + 8, y: q.y * TILE + 9 }));
+    const lengths = [0];
+    for (let i = 1; i < pts.length; i++) lengths.push(lengths[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    const total = lengths[lengths.length - 1];
+    if (total <= 0) return;
+    const fade = Math.min(1, tr.age * 2) * clamp((7 - tr.age) / 2, 0, 1);
+    const count = Math.min(48, Math.ceil(total / 9));
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let k = 0; k < count; k++) {
+      const along = (tr.age * 60 + (k / count) * total) % total;
+      // Motes only travel as far as the wave has reached.
+      if (along > tr.age * 120) continue;
+      let i = 1;
+      while (i < lengths.length - 1 && lengths[i] < along) i++;
+      const f = (along - lengths[i - 1]) / Math.max(0.001, lengths[i] - lengths[i - 1]);
+      const x = lerp(pts[i - 1].x, pts[i].x, f) + Math.sin(along * 0.2 + k) * 1.5;
+      const y = lerp(pts[i - 1].y, pts[i].y, f) + Math.cos(along * 0.17 + k) * 1.5 - 3;
+      const a = fade * (0.55 + 0.45 * Math.sin(this.time * 4 + k));
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 4);
+      g.addColorStop(0, `rgba(255,236,190,${0.6 * a})`);
+      g.addColorStop(1, "rgba(255,236,190,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 4, y - 4, 8, 8);
+      ctx.fillStyle = `rgba(255,250,235,${a})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** What can be examined on that tile: someone to talk to, or something to look at. */
+  private thingAt(p: Point) {
+    return this.things.find((th) => {
+      if (th.prop.copy || th.picked || !th.el.dice.length || th.fade < 0.3) return false;
+      if (th.prop.route.length > 1) return th.x === p.x && th.y === p.y;
+      return footprint(th.x, th.y, th.prop.width).some((q) => q.x === p.x && q.y === p.y);
+    });
   }
 
   private updatePlayer(dt: number) {
@@ -710,6 +1010,14 @@ export class Engine {
         const d = (Object.keys(DELTA) as Dir[]).find((k) => p.x + DELTA[k].x === next.x && p.y + DELTA[k].y === next.y);
         if (!d || !this.tryMove(d)) this.path = [];
         else this.path.shift();
+      } else if (this.pendingTalk) {
+        const th = this.pendingTalk;
+        this.pendingTalk = null;
+        const near = this.thingTiles(th).find((q) => manhattan(q, p) === 1);
+        if (near) {
+          p.dir = (Object.keys(DELTA) as Dir[]).find((k) => p.x + DELTA[k].x === near.x && p.y + DELTA[k].y === near.y) ?? p.dir;
+          this.examine(th);
+        }
       }
     }
     this.walkBlend += ((p.moving ? 1 : 0) - this.walkBlend) * Math.min(1, dt * 10);
@@ -740,6 +1048,15 @@ export class Engine {
   private arrive() {
     const p = this.player;
     const m = this.map;
+    const found = this.things.find((th) => th.el.levantar && !th.picked && th.x === p.x && th.y === p.y);
+    if (found) {
+      found.picked = true;
+      if (found.el.imagen) this.carried.add(found.el.imagen);
+      this.path = [];
+      this.o.audio.verse();
+      this.say(found.el.dice.map((text) => ({ speaker: "narrator" as const, text })));
+      return;
+    }
     const verse = m.verses.find((v) => v.x === p.x && v.y === p.y && !this.collected.has(v.index));
     if (verse) {
       this.collect(verse);
@@ -817,8 +1134,10 @@ export class Engine {
     const p = this.player;
     const f = { x: p.x + DELTA[p.dir].x, y: p.y + DELTA[p.dir].y };
     const lamp = this.lampAt(f);
+    const thing = this.thingAt(f);
     if (this.isAngel(f)) this.talkToAngel();
     else if (lamp) this.restAt(lamp, true);
+    else if (thing) this.examine(thing);
     else this.sing();
   }
 
@@ -873,6 +1192,8 @@ export class Engine {
         text: "Tu luz es tu vida: si una sombra te alcanza, baja. Los faroles la recuperan. Y cantar asusta a las sombras.",
       });
       lines.push({ speaker: "narrator", text: "El ángel está a tu lado. Hablá con él." });
+      if (this.things.some((th) => th.el.persona))
+        lines.push({ speaker: "narrator", text: "En cada página vive alguien de su pintura. Si le hablás, te muestra por dónde seguir." });
     }
     return lines;
   }
@@ -1625,6 +1946,7 @@ export class Engine {
           ctx.fill();
         }
       }
+      this.drawTrail(ctx);
     }
 
     this.renderWeather(ctx, reveal);
@@ -1834,6 +2156,14 @@ export class Engine {
         },
       });
     }
+    const faced = this.mode === "explore" ? this.thingAt({ x: this.player.x + DELTA[this.player.dir].x, y: this.player.y + DELTA[this.player.dir].y }) : undefined;
+    for (const th of this.things) {
+      if (th.picked || th.fade <= 0 || !th.el.imagen) continue;
+      if (!onScreen({ x: th.x, y: th.y - (th.el.alto ?? 2) })) {
+        if (!onScreen(th)) continue;
+      }
+      items.push({ y: lerp(th.fromY, th.y, th.t), draw: () => this.drawThing(ctx, th, t, shadowAt, th === faced) });
+    }
     const p = this.player;
     const pos = this.playerPos();
     const blinking = this.invulnerable > 0 && Math.floor(t * 10) % 2 === 0;
@@ -1862,6 +2192,105 @@ export class Engine {
     });
     items.sort((i, j) => i.y - j.y);
     for (const it of items) it.draw();
+  }
+
+  /** One person or thing of the painting, moving the way the book says it moves. */
+  private drawThing(
+    ctx: CanvasRenderingContext2D,
+    th: Thing,
+    t: number,
+    shadowAt: (x: number, y: number, rx: number, ry: number, a?: number) => void,
+    faced: boolean,
+  ) {
+    const el = th.el;
+    const { cx, base, h, width, img } = this.thingBox(th);
+    const mode = el.mueve ?? (el.persona ? "respira" : "quieto");
+    const ph = th.phase;
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * Math.min(1, th.fade) * (mode === "sombra" ? 0.5 : 1);
+    if (mode !== "sombra") shadowAt(cx, base, Math.max(5, width * 0.42), 2.4, el.pasable ? 0.45 : 0.8);
+    let dy = 0;
+    let tilt = 0;
+    let squash = 1;
+    let shear = 0;
+    let dx = 0;
+    if (mode === "respira") squash = 1 + Math.sin(t * 1.7 + ph) * 0.012;
+    else if (mode === "baila") {
+      tilt = Math.sin(t * 3.2 + ph) * 0.07;
+      dy = -Math.abs(Math.sin(t * 3.2 + ph)) * 1.6;
+    } else if (mode === "aplaude") dy = -Math.abs(Math.sin(t * 9 + ph)) * 0.9;
+    else if (mode === "marioneta") {
+      dy = Math.sin(t * 1.4) * 1.4 - 1.5;
+      tilt = Math.sin(t * 1.1) * 0.035;
+    } else if (mode === "viento") shear = Math.sin(t * 1.3 + ph) * 0.07 + Math.sin(t * 2.9 + ph) * 0.02;
+    else if (mode === "sombra") dx = Math.sin(t * 0.35 + ph) * 3;
+    else if ((mode === "seAleja" || mode === "corre" || mode === "seAcerca") && th.moving) {
+      const pace = mode === "corre" ? 0.13 : 0.38;
+      dy = -Math.abs(Math.sin((t / pace) * Math.PI)) * (mode === "corre" ? 1.8 : 0.8);
+      tilt = mode === "corre" ? Math.sin((t / pace) * Math.PI) * 0.04 : 0;
+    } else if (el.persona && mode !== "quieto") squash = 1 + Math.sin(t * 1.7 + ph) * 0.012;
+
+    if (img) {
+      ctx.save();
+      ctx.translate(cx + dx, base + dy);
+      if (tilt) ctx.rotate(tilt);
+      if (shear) ctx.transform(1, 0, shear, 1, 0, 0);
+      ctx.scale(el.espejado ? -1 : 1, squash);
+      ctx.drawImage(img, -width / 2, -h, width, h);
+      ctx.restore();
+    } else if (el.persona) drawSilhouette(ctx, cx + dx, base + dy, h, width);
+    const top = base + dy - h;
+
+    if ((mode === "fuma" || mode === "vapor") && el.humo) {
+      const hx = cx + (el.espejado ? 0.5 - el.humo.x : el.humo.x - 0.5) * width;
+      drawWisps(ctx, hx, top + el.humo.y * h, t, ph, mode === "vapor");
+    }
+    if (mode === "marioneta") drawStrings(ctx, cx, top, width, h, t);
+    if (mode === "brilla" && (t * 0.45 + ph) % 1 < 0.12) {
+      const q = Math.sin((((t * 0.45 + ph) % 1) / 0.12) * Math.PI);
+      drawStar(ctx, cx + width * 0.15, base - h * 0.55, 3 + q * 4, `rgba(255,255,255,${q})`, "rgba(255,250,230,0.9)", 6 * this.dpr);
+    }
+    if (mode === "refleja" && el.vidrio) this.drawReflection(ctx, th, cx - width / 2, top, width, h);
+    ctx.globalAlpha = alpha;
+
+    // The small star over what the Voice would talk to.
+    if (faced) {
+      const pulse = 0.7 + Math.sin(t * 4) * 0.3;
+      drawStar(ctx, cx, top - 5 + Math.sin(t * 3) * 1.2, 6, `rgba(244,227,176,${pulse})`, "rgba(255,214,150,0.9)", 8 * this.dpr);
+    }
+  }
+
+  /** A mirror shows the Voice when it stands in front: with a cardboard crown, as in the book. */
+  private drawReflection(ctx: CanvasRenderingContext2D, th: Thing, left: number, top: number, width: number, h: number) {
+    const g = th.el.vidrio!;
+    const p = this.playerPos();
+    const ahead = p.y - th.y;
+    if (ahead <= 0 || ahead > 4.5 || Math.abs(p.x - th.x) > 2.5) return;
+    const parts = this.paintedArt?.voice?.front;
+    if (!parts) return;
+    const gx = left + g.x * width;
+    const gy = top + g.y * h;
+    const gw = g.ancho * width;
+    const gh = g.alto * h;
+    const near = clamp(1.4 - ahead / 4);
+    const tall = gh * (0.45 + near * 0.35);
+    const fx = gx + gw / 2 + (p.x - th.x) * gw * 0.18;
+    const fy = gy + gh * 0.96;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gx, gy, gw, gh);
+    ctx.clip();
+    ctx.globalAlpha *= 0.85 * near;
+    // Seen in a mirror, the lantern stays on the same side as the Voice's.
+    drawVoice(ctx, parts, fx, fy, tall, true, voicePose(parts, "front", 0, 0, this.time));
+    drawCrown(ctx, fx, fy - tall * 0.83, tall * 0.28);
+    const sheen = ctx.createLinearGradient(gx, gy, gx + gw, gy + gh);
+    sheen.addColorStop(0, "rgba(220,230,255,0.12)");
+    sheen.addColorStop(0.5, "rgba(20,20,40,0.25)");
+    sheen.addColorStop(1, "rgba(220,230,255,0.08)");
+    ctx.fillStyle = sheen;
+    ctx.fillRect(gx, gy, gw, gh);
+    ctx.restore();
   }
 
   /** Where the Voice's lantern is. */
@@ -1968,6 +2397,40 @@ export class Engine {
         ? { x: px, y: py, r: 4.4, a: 1, c: [1, 0.95, 0.8], shadow: true, glow: 0.45, gx: px, gy: py - 4, gr: 30 }
         : { x: px, y: py, r: 1.5, a: 0.55, c: [1, 0.45, 0.45], shadow: false, glow: 0.25, gx: px, gy: py, gr: 12 },
     );
+    for (const th of this.things) {
+      // People of the painting glow faintly, like echoes: they can be seen from afar in the dark.
+      if (th.el.persona && th.fade > 0) {
+        const b = this.thingBox(th);
+        const f = Math.min(1, th.fade) * (0.85 + Math.sin(t * 1.3 + th.phase) * 0.15);
+        out.push({ x: b.cx, y: b.base - 6, r: 2.1, a: 0.6 * f, c: [0.82, 0.86, 1], shadow: false, glow: 0.16 * f, gx: b.cx, gy: b.base - b.h * 0.55, gr: 12 });
+      }
+      const L = th.el.luz;
+      if (!L || th.picked || th.fade <= 0) continue;
+      const b = this.thingBox(th);
+      let x = b.cx;
+      let y = b.base - 6;
+      let gy = th.el.imagen ? b.base - b.h * (L.altura ?? 0.5) : y;
+      let k = 1;
+      if (th.el.mueve === "titila") k = ((t * 0.31 + th.phase) % 1 < 0.05 && Math.sin(t * 70) > 0 ? 0.25 : 1) * (0.94 + Math.sin(t * 17 + th.phase) * 0.06);
+      if (th.el.mueve === "llama") k = 1 + Math.sin(t * 9 + th.phase) * 0.05 + Math.sin(t * 23 + th.phase) * 0.03;
+      if (th.el.mueve === "gira") {
+        x += Math.cos(t * 0.7 + th.phase) * TILE * 3;
+        y += Math.sin(t * 0.9 + th.phase) * TILE * 2;
+        gy = y;
+      }
+      out.push({
+        x,
+        y,
+        r: L.alcance * k,
+        a: 0.95 * Math.min(1, th.fade),
+        c: this.lampTint(L.color),
+        shadow: th.el.mueve !== "gira",
+        glow: 0.42 * k * Math.min(1, th.fade),
+        gx: x,
+        gy,
+        gr: th.el.imagen ? 9 : 16,
+      });
+    }
     for (const sp of m.sparkles) {
       const q = (Math.sin(t * 3 + sp.x * 1.7 + sp.y) + 1) / 2;
       const x = sp.x * TILE + 8;
@@ -2405,6 +2868,7 @@ export class Engine {
               visible: Math.floor(d.visible),
               complete: d.visible >= line.text.length,
               veiled: line.veiled,
+              portrait: line.portrait,
             }
           : null,
       battle:

@@ -29,6 +29,8 @@ export type Textures = {
   ground: CanvasImageSource | null;
   rock: CanvasImageSource | null;
   boulder: HTMLImageElement | null;
+  /** The front of the walls indoors, like wallpaper. Without it, the front is dark rock. */
+  face?: CanvasImageSource | null;
 };
 
 export type Puddle = { x: number; y: number; rx: number; ry: number; seed: number };
@@ -272,7 +274,7 @@ export function buildWorldArt(
   painting: CanvasImageSource,
   map: GameMap,
   tex: Textures,
-  o: { seed: number; tone: string; rain: boolean; petals: boolean },
+  o: { seed: number; tone: string; rain: boolean; petals: boolean; indoors?: boolean },
 ): WorldArt {
   const cells = map.cells;
   const { color, light } = paintingFields(painting);
@@ -391,7 +393,8 @@ export function buildWorldArt(
   }
 
   // 2. Walls: shadow on the ground, dark front face, lit rock top.
-  const loose = looseRocks(cells);
+  // Indoors there are no loose rocks: a lone wall is a pillar.
+  const loose = o.indoors ? new Set<number>() : looseRocks(cells);
   const shape = footprint(cells, loose);
   const walls = makeCanvas(AW, AH);
   const w = walls.getContext("2d")!;
@@ -414,8 +417,18 @@ export function buildWorldArt(
   // Front face: the whole footprint in dark rock; the raised top covers all but its lower band.
   w.save();
   w.clip(shape);
-  paintTexture(w, rockTex, 3.2, 11);
-  w.fillStyle = "rgba(2,2,6,0.8)";
+  if (tex.face) {
+    paintTexture(w, tex.face, 2.4, 11);
+    w.globalCompositeOperation = "color";
+    w.globalAlpha = 0.35;
+    w.drawImage(color, 0, 0, AW, AH);
+    w.globalCompositeOperation = "source-over";
+    w.globalAlpha = 1;
+    w.fillStyle = "rgba(2,2,6,0.5)";
+  } else {
+    paintTexture(w, rockTex, 3.2, 11);
+    w.fillStyle = "rgba(2,2,6,0.8)";
+  }
   w.fillRect(0, 0, AW, AH);
   const raised = new Path2D();
   raised.addPath(shape, new DOMMatrix().translate(0, -FACE));

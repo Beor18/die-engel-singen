@@ -1,4 +1,4 @@
-import type { Clima } from "@/contenido";
+import type { Clima, Escena } from "@/contenido";
 
 /**
  * What the game needs from each page of the book. It is built from
@@ -17,11 +17,13 @@ export type LevelSource = {
   meaning: string[];
   tone: string;
   weather: Clima;
+  /** The people and things of the painting, placed inside the level. */
+  scene?: Escena;
 };
 
 export type Dir = "up" | "down" | "left" | "right";
 export type Point = { x: number; y: number };
-export type Speaker = "angel" | "voice" | "shadow" | "guardian" | "narrator" | "verse";
+export type Speaker = "angel" | "voice" | "shadow" | "guardian" | "narrator" | "verse" | "figure";
 
 export type DialogueUI = {
   speaker: Speaker;
@@ -32,6 +34,8 @@ export type DialogueUI = {
   complete: boolean;
   /** The meaning with hidden letters, while verses are missing. */
   veiled?: boolean;
+  /** For people of the painting: their image, shown as the portrait. */
+  portrait?: string;
 };
 
 export type BattleOption = { id: "sing" | "recall" | "breathe" | "flee"; label: string; enabled: boolean };
