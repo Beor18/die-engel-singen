@@ -194,8 +194,9 @@
   .titulo-bajada {
     margin-left: 0;
   }
-  .titulo-acciones,
-  .titulo-pie {
+  /* Only the title screen is left-aligned; other screens reuse these rows centered. */
+  .titulo-contenido .titulo-acciones,
+  .titulo-contenido .titulo-pie {
     justify-content: flex-start;
   }
 }
