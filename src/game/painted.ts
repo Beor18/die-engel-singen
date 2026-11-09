@@ -20,7 +20,217 @@ export type Painted = {
   /** The lamp before it is lit: the same image, darker. */
   lampDark: HTMLCanvasElement | null;
   feather: HTMLImageElement | null;
+  /** The Voice cut into a body and a leg for each view, so it can walk. */
+  voice: Record<View, VoiceParts> | null;
 };
+
+export type View = "front" | "back" | "side";
+
+type Poly = [number, number][];
+
+/** How each painting of the Voice is cut, in its own pixels. The images are 280 pixels tall and stand on y = 280. */
+type LegCut = {
+  /** Outline of the painted leg reused for both legs. */
+  leg: Poly;
+  /** What to erase from the body: the legs as they were painted. */
+  erase: Poly[];
+  /** Where the leg comes out of the cloak, and the middle of the shin there. */
+  top: number;
+  shin: number;
+  /** Where each leg hangs from in the body. */
+  hips: [number, number];
+  hipY: number;
+  /** Turns the leg until it stands straight with the sole flat. */
+  turn: number;
+  /** Lengthens the leg so it reaches the ground from where it hangs. */
+  stretch: number;
+  /** Above this line the cloak doesn't sway. */
+  waist: number;
+};
+
+const CUTS: Record<View, LegCut> = {
+  front: {
+    leg: [[66, 222], [86, 222], [86, 232], [95, 236], [95, 281], [55, 281], [55, 247], [66, 245]],
+    erase: [
+      [[64, 222], [87, 222], [87, 233], [97, 237], [97, 282], [53, 282], [53, 247], [64, 245]],
+      [[49, 216], [67, 216], [67, 248], [47, 248]],
+    ],
+    top: 222,
+    shin: 76,
+    hips: [57, 79],
+    hipY: 222,
+    turn: 0,
+    stretch: 1,
+    waist: 140,
+  },
+  back: {
+    leg: [[51, 222], [72, 222], [73, 248], [81, 250], [81, 281], [53, 281], [49, 250]],
+    erase: [[[49, 223], [87, 223], [87, 251], [83, 251], [83, 282], [51, 282], [47, 250]]],
+    top: 222,
+    shin: 62,
+    hips: [60, 81],
+    hipY: 222,
+    turn: 0,
+    stretch: 1,
+    waist: 140,
+  },
+  side: {
+    leg: [[96, 229], [113, 229], [117, 242], [131, 250], [131, 281], [89, 281], [89, 258], [100, 246]],
+    erase: [
+      [[28, 230], [51, 230], [51, 247], [48, 282], [0, 282], [0, 252], [22, 240]],
+      [[93, 229], [116, 229], [125, 246], [133, 250], [133, 282], [87, 282], [87, 258], [97, 246]],
+    ],
+    top: 229,
+    shin: 105,
+    hips: [76, 80],
+    hipY: 233,
+    turn: 0.237,
+    stretch: 1.08,
+    waist: 130,
+  },
+};
+
+/** How many pixels above each cut the painted leg fades out, so it doesn't end in a straight line. */
+const FEATHER = 6;
+
+/** How far the leg reaches up under the cloak, so it never shows a gap while it moves. */
+const REACH = 32;
+
+export type VoiceParts = {
+  body: HTMLCanvasElement;
+  leg: HTMLCanvasElement;
+  legDark: HTMLCanvasElement;
+  /** The point of the leg that hangs from the hip. */
+  pivot: { x: number; y: number };
+  cut: LegCut;
+};
+
+function trace(g: CanvasRenderingContext2D, poly: Poly) {
+  g.beginPath();
+  poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.closePath();
+}
+
+function cutVoice(img: HTMLImageElement, cut: LegCut): VoiceParts {
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const body = makeCanvas(w, h);
+  const b = body.getContext("2d")!;
+  b.drawImage(img, 0, 0);
+  b.globalCompositeOperation = "destination-out";
+  for (const shape of cut.erase) {
+    b.fillStyle = "#000";
+    trace(b, shape);
+    b.fill();
+    const top = Math.min(...shape.map(([, y]) => y));
+    const edge = shape.filter(([, y]) => y === top).map(([x]) => x);
+    const fade = b.createLinearGradient(0, top - FEATHER, 0, top);
+    fade.addColorStop(0, "rgba(0,0,0,0)");
+    fade.addColorStop(1, "rgba(0,0,0,0.9)");
+    b.fillStyle = fade;
+    b.fillRect(Math.min(...edge), top - FEATHER, Math.max(...edge) - Math.min(...edge), FEATHER);
+  }
+
+  const xs = cut.leg.map(([x]) => x);
+  const x0 = Math.floor(Math.min(...xs));
+  const lw = Math.ceil(Math.max(...xs)) - x0;
+  const lh = h - cut.top;
+  const only = makeCanvas(lw, lh);
+  const o = only.getContext("2d")!;
+  o.translate(-x0, -cut.top);
+  trace(o, cut.leg);
+  o.clip();
+  o.drawImage(img, 0, 0);
+
+  const leg = makeCanvas(lw, lh + REACH);
+  const g = leg.getContext("2d")!;
+  // The shin goes on up under the cloak: its first rows, stretched.
+  g.drawImage(only, 0, 0, lw, 5, 0, 0, lw, REACH + 2);
+  g.drawImage(only, 0, REACH);
+  return { body, leg, legDark: darker(leg, 0.6), pivot: { x: cut.shin - x0, y: REACH }, cut };
+}
+
+export type VoicePose = {
+  /** How far the body sinks and sways, in image pixels. */
+  drop: number;
+  sway: number;
+  /** How much the bottom of the cloak trails, per pixel below the waist. */
+  shear: number;
+  legs: { x: number; y: number; angle: number; mirror: boolean; shade: number }[];
+};
+
+/**
+ * Where everything goes at a moment of the walk. `phase` advances by π each
+ * step, `walk` goes from 0 (standing) to 1 (walking) and `t` is the clock,
+ * for breathing while still.
+ */
+export function voicePose(v: VoiceParts, view: View, phase: number, walk: number, t: number): VoicePose {
+  const { cut } = v;
+  const s = Math.sin(phase);
+  const breath = Math.sin(t * 2) * 1.6 * (1 - walk);
+  if (view === "side") {
+    const length = 279 - cut.hipY + 3;
+    const swing = 0.55 * walk * s;
+    const drop = length * (1 - Math.cos(swing));
+    const legs = [0, 1].map((i) => {
+      const angle = cut.turn + (i ? -swing : swing);
+      const lift = Math.max(0, Math.cos(phase + i * Math.PI)) * 5 * walk;
+      return { x: cut.hips[i], y: cut.hipY + drop - lift, angle, mirror: false, shade: i ? 0.55 : 0 };
+    });
+    return { drop: drop + breath, sway: 0, shear: (0.07 + 0.03 * Math.sin(phase * 2)) * walk, legs: [legs[1], legs[0]] };
+  }
+  // Seen from the front, the leg that steps forward comes down the screen; from the back, up.
+  const toward = view === "front" ? 1 : -1;
+  const legs = [0, 1].map((i) => {
+    const step = Math.sin(phase + i * Math.PI);
+    const lift = Math.max(0, Math.cos(phase + i * Math.PI)) * 8 * walk;
+    return {
+      x: cut.hips[i],
+      y: cut.hipY + step * toward * 4.5 * walk - lift,
+      angle: 0,
+      mirror: i === 0,
+      shade: Math.max(0, -step * toward) * 0.35 * walk,
+    };
+  });
+  legs.sort((a, b) => a.y - b.y);
+  return {
+    drop: 3 * s * s * walk + breath,
+    sway: 1.4 * s * walk,
+    shear: 0.05 * Math.sin(phase - 0.6) * walk,
+    legs,
+  };
+}
+
+/** Draws the Voice standing on (x, y), `height` tall, with its legs and cloak where `pose` says. */
+export function drawVoice(ctx: CanvasRenderingContext2D, v: VoiceParts, x: number, y: number, height: number, flip: boolean, pose: VoicePose) {
+  const { body, leg, legDark, pivot, cut } = v;
+  const k = height / body.height;
+  const alpha = ctx.globalAlpha;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(flip ? -k : k, k);
+  ctx.translate(-body.width / 2, -body.height);
+  for (const l of pose.legs) {
+    ctx.save();
+    ctx.translate(l.x, l.y);
+    if (l.angle) ctx.rotate(l.angle);
+    ctx.scale(l.mirror ? -1 : 1, cut.stretch);
+    ctx.drawImage(leg, -pivot.x, -pivot.y);
+    if (l.shade > 0.01) {
+      ctx.globalAlpha = alpha * l.shade;
+      ctx.drawImage(legDark, -pivot.x, -pivot.y);
+      ctx.globalAlpha = alpha;
+    }
+    ctx.restore();
+  }
+  ctx.translate(pose.sway, pose.drop);
+  const w = body.width;
+  const waist = cut.waist;
+  ctx.drawImage(body, 0, 0, w, waist + 1, 0, 0, w, waist + 1);
+  ctx.transform(1, 0, pose.shear, 1, -pose.shear * waist, 0);
+  ctx.drawImage(body, 0, waist, w, body.height - waist, 0, waist, w, body.height - waist);
+  ctx.restore();
+}
 
 const FILES = {
   ground: "suelo.webp",
@@ -46,8 +256,8 @@ function image(src: string) {
   });
 }
 
-function darker(img: HTMLImageElement, amount: number) {
-  const c = makeCanvas(img.naturalWidth, img.naturalHeight);
+function darker(img: HTMLImageElement | HTMLCanvasElement, amount: number) {
+  const c = makeCanvas(img.width, img.height);
   const g = c.getContext("2d")!;
   g.drawImage(img, 0, 0);
   g.globalCompositeOperation = "source-atop";
@@ -63,7 +273,10 @@ export function loadPainted(): Promise<Painted> {
       Object.entries(FILES).map(async ([key, file]) => [key, await image(`/juego/arte/${file}`)] as const),
     );
     const got = Object.fromEntries(entries) as Record<keyof typeof FILES, HTMLImageElement | null>;
-    return { ...got, lampDark: got.lamp ? darker(got.lamp, 0.5) : null };
+    const { voiceFront: front, voiceBack: back, voiceSide: side } = got;
+    const voice =
+      front && back && side ? { front: cutVoice(front, CUTS.front), back: cutVoice(back, CUTS.back), side: cutVoice(side, CUTS.side) } : null;
+    return { ...got, lampDark: got.lamp ? darker(got.lamp, 0.5) : null, voice };
   })();
   return loading;
 }

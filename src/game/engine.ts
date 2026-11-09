@@ -19,7 +19,7 @@ import {
   type Verse,
 } from "./level";
 import { createRng, hash, pick, type Rng } from "./rng";
-import { drawSmoke, drawStar, groundShadow, loadPainted, SMOKE_EYES, stand, type Painted } from "./painted";
+import { drawSmoke, drawStar, drawVoice, groundShadow, loadPainted, SMOKE_EYES, stand, voicePose, type Painted, type View } from "./painted";
 import { buildSprites, LAMP_HEIGHT, type Sprites } from "./sprites";
 import type { BattleOption, BattleUI, Dir, LevelSource, Point, Speaker, UIState } from "./types";
 
@@ -220,6 +220,10 @@ export class Engine {
   private time = 0;
   private player: Actor = { x: 0, y: 0, fromX: 0, fromY: 0, t: 1, moving: false, duration: STEP_TIME, dir: "up" };
   private walkClock = 0;
+  /** 0 while the Voice stands, 1 while it walks; eases between them so the legs settle. */
+  private walkBlend = 0;
+  /** How far the Voice's body is moved by its walk this frame, in world pixels, for the lantern. */
+  private voiceShift = { x: 0, y: 0 };
   private held: Dir[] = [];
   private pad: Dir | null = null;
   private path: Point[] = [];
@@ -382,7 +386,31 @@ export class Engine {
       };
       return { ground: half(this.art.ground), walls: half(this.art.walls) };
     },
+    /** The Voice at eight moments of its walk, for each view, drawn large. */
+    walk: (size = 280) => {
+      const voice = this.paintedArt?.voice;
+      if (!voice) return null;
+      const views: View[] = ["front", "back", "side"];
+      const k = size / 280;
+      const c = canvas(8 * 180 * k, views.length * 300 * k);
+      const g = c.getContext("2d")!;
+      g.fillStyle = "#3c5a3c";
+      g.fillRect(0, 0, c.width, c.height);
+      views.forEach((view, row) => {
+        for (let i = 0; i < 8; i++) {
+          const phase = (i * Math.PI) / 4;
+          drawVoice(g, voice[view], (90 + i * 180) * k, (290 + row * 300) * k, size, false, voicePose(voice[view], view, phase, 1, 0));
+        }
+      });
+      return c.toDataURL();
+    },
     state: () => ({ mode: this.mode, player: { x: this.player.x, y: this.player.y }, light: this.light, verses: this.collected.size }),
+    /** Where the Voice's feet are on screen, in device pixels. */
+    feet: () => {
+      const v = this.view();
+      const pos = this.playerPos();
+      return { x: (pos.x * TILE + 8) * v.s + v.ox, y: (pos.y * TILE + 15) * v.s + v.oy };
+    },
   };
 
   // ----- Loading -------------------------------------------------------------
@@ -684,6 +712,7 @@ export class Engine {
         else this.path.shift();
       }
     }
+    this.walkBlend += ((p.moving ? 1 : 0) - this.walkBlend) * Math.min(1, dt * 10);
   }
 
   private tryMove(dir: Dir) {
@@ -1808,19 +1837,25 @@ export class Engine {
     const p = this.player;
     const pos = this.playerPos();
     const blinking = this.invulnerable > 0 && Math.floor(t * 10) % 2 === 0;
-    const stride = Math.sin((this.walkClock * Math.PI) / 0.22);
-    const bob = p.moving ? Math.abs(stride) * 1.3 : Math.sin(t * 2) * 0.2;
     const x = pos.x * TILE + 8;
     const y = pos.y * TILE + 15;
+    const view: View = p.dir === "down" ? "front" : p.dir === "up" ? "back" : "side";
+    const parts = P?.voice?.[view];
+    const flip = p.dir === "right";
+    const pose = parts && voicePose(parts, view, (this.walkClock * Math.PI) / STEP_TIME, this.walkBlend, t);
+    if (parts && pose) {
+      const k = VOICE_TALL / parts.body.height;
+      this.voiceShift = { x: pose.sway * k * (flip ? -1 : 1), y: pose.drop * k };
+    } else this.voiceShift = { x: 0, y: 0 };
     items.push({
       y: pos.y,
       draw: () => {
         shadowAt(x, y, 6.5, 2.3);
         if (blinking) return;
-        const img = p.dir === "down" ? P?.voiceFront : p.dir === "up" ? P?.voiceBack : P?.voiceSide;
-        if (img) stand(ctx, img, x, y - bob, VOICE_TALL, { flip: p.dir === "right", tilt: p.moving ? stride * 0.045 : 0 });
+        if (parts && pose) drawVoice(ctx, parts, x, y, VOICE_TALL, flip, pose);
         else {
           const frames = this.sprites.voice[p.dir];
+          const bob = p.moving ? Math.abs(Math.sin((this.walkClock * Math.PI) / STEP_TIME)) * 1.3 : 0;
           ctx.drawImage(frames[p.moving ? 1 + (Math.floor(this.walkClock / 0.12) % 2) : 0], x - 8, y - 23 - bob);
         }
       },
@@ -1833,7 +1868,7 @@ export class Engine {
   private lanternPos() {
     const pos = this.playerPos();
     const at = LANTERN[this.player.dir];
-    return { x: pos.x * TILE + 8 + at.x, y: pos.y * TILE + 15 - at.y };
+    return { x: pos.x * TILE + 8 + at.x + this.voiceShift.x, y: pos.y * TILE + 15 - at.y + this.voiceShift.y };
   }
 
   /** Whether light from (x0, y0) reaches (x1, y1), in world pixels: walls in between block it. */
