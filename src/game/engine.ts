@@ -490,6 +490,19 @@ export class Engine {
     state: () => ({ mode: this.mode, player: { x: this.player.x, y: this.player.y }, light: this.light, verses: this.collected.size }),
     /** The people and things of the painting in this level. */
     things: () => this.things.map((th) => ({ name: th.el.nombre, x: th.x, y: th.y, copy: th.prop.copy, image: th.el.imagen ?? null })),
+    /** Sends the shadows away, to walk a level without battles. */
+    calm: () => {
+      for (const s of this.shadows) s.alive = false;
+      this.stepsSinceEncounter = -1e9;
+    },
+    /** Where the verses still missing are. */
+    verses: () => this.map.verses.filter((v) => !this.collected.has(v.index)).map((v) => ({ x: v.x, y: v.y, index: v.index })),
+    /** Walks the Voice to a tile along the way a tap would take; false if it can't get there. */
+    walkTo: (x: number, y: number) => {
+      const route = findPath(this.map.cells, this.player, { x, y }, (tx, ty) => this.blocksPlayer({ x: tx, y: ty }));
+      if (route?.length) this.path = route;
+      return Boolean(route?.length);
+    },
     /** Puts the Voice on a tile, to check what happens there. */
     goto: (x: number, y: number, dir: Dir = "up") => {
       this.player = { ...this.player, x, y, fromX: x, fromY: y, t: 1, moving: false, dir };
