@@ -39,32 +39,19 @@ import {
   type View,
 } from "./painted";
 import { buildSprites, LAMP_HEIGHT, type Sprites } from "./sprites";
-import type { BattleOption, BattleUI, Dir, LevelSource, Point, Speaker, UIState } from "./types";
+import type { BattleUI, Dir, LevelSource, Point, Speaker, UIState } from "./types";
+import { doubt, phrase, styleOf, tell, timing, travelBeats, wholeLines, type Style, type Timing } from "./battle";
+import { getProgress, updateProgress } from "./progress";
 
 /**
  * The game engine for one level: exploration, battles and the final reveal.
  * It draws the world on a canvas and publishes a small UI state that React
- * renders as HTML (dialogue, battle menu, HUD), so text stays crisp and readable.
+ * renders as HTML (dialogue, battle panel, HUD), so text stays crisp and readable.
  */
 
 const STEP_TIME = 0.2;
 const TYPE_SPEED = 48;
 const DELTA: Record<Dir, Point> = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
-
-const DOUBTS = [
-  "¿Y si nadie te escucha?",
-  "Ya lo intentaste. Mirá cómo terminó.",
-  "Mañana. Siempre mañana.",
-  "Nadie te pidió que cantaras.",
-  "Quedate. Acá no duele.",
-  "Lo que perdiste no vuelve.",
-  "Una más. La última.",
-  "¿Quién te creés que sos?",
-  "Te vas a equivocar otra vez.",
-  "Es tarde para empezar.",
-  "Mejor callate.",
-  "Nadie se acuerda de vos.",
-];
 
 const NAMES: Record<Speaker, string> = {
   angel: "El ángel",
@@ -97,35 +84,67 @@ type Thing = Actor & {
 /** Light motes going from someone toward the nearest missing verse. */
 type Trail = { points: Point[]; age: number };
 
+type BattleNote = {
+  at: number;
+  travel: number;
+  side: number;
+  degree: number;
+  style: Style;
+  result: null | "perfect" | "good" | "early" | "late";
+  /** When it was answered or missed, for its burst of light or darkness. */
+  doneAt: number;
+  /** Whether the shadow already sang it. */
+  called: boolean;
+  /** Waits on the light until the Voice sings: the first note of the rehearsal. */
+  hold: boolean;
+};
+
 type Battle = {
   guardian: boolean;
   name: string;
+  /** The kinds of singing of this battle, one per phrase in turn: the guardian mixes the page's shadows. */
+  styles: { style: Style; name: string }[];
+  style: Style;
   hp: number;
   maxHp: number;
   phase: BattleUI["phase"];
   text: string;
   hint: string;
-  selected: number;
+  verse: boolean;
   shadow: Shadow | null;
   clock: number;
   intro: number;
-  notes: { start: number; result: null | "perfect" | "good" | "miss" }[];
-  noteTime: number;
-  noteIndex: number;
-  hits: number;
-  perfects: number;
-  next: (() => void) | null;
-  textClock: number;
+  timing: Timing;
+  nextBeat: number;
+  beats: number;
+  /** 1 on each beat, fading: the light and the shadow breathe with it. */
+  pulse: number;
+  notes: BattleNote[];
+  phrases: number;
+  /** Notes missed in this phrase. */
+  misses: number;
+  restUntil: number;
+  endAt: number;
+  /** The first battle teaches: 1 while one held note waits, 2 for a short phrase that can't hurt. */
+  lesson: 0 | 1 | 2;
+  /** Answered notes flying back at the shadow as light. */
+  bolts: { t: number; amount: number; big: boolean }[];
+  /** 1 when a whole phrase was answered, fading. */
+  flare: number;
+  /** 1 when the light was hit, fading. */
+  wound: number;
+  /** Counts down after the light goes out, so the blow is seen before the blackout. */
+  losing: number;
   hurt: number;
   dying: number;
-  turn: number;
-  defendStart: number;
-  defendTime: number;
-  defendResult: null | "block" | "hit";
-  popups: { text: string; t: number; color: string; y: number }[];
+  /** Grades over the light; changes to the light itself (low) beside it. */
+  popups: { text: string; t: number; color: string; big: boolean; low: boolean }[];
   particles: { a: number; r: number; s: number; size: number; o: number }[];
   origin: Point;
 };
+
+/** Seconds an answered note takes to fly from the light to the shadow. */
+const BOLT_TIME = 0.28;
 
 type Drop = { x: number; y: number; vx: number; vy: number; size: number; rot: number; spin: number; color: string; phase: number };
 type Glow = {
@@ -271,7 +290,6 @@ export class Engine {
   private path: Point[] = [];
   private light: number;
   private collected = new Set<number>();
-  private echoes = 0;
   private checkpoint: Point = { x: 0, y: 0 };
   private visitedLamps = new Set<Lamp>();
   private shadows: Shadow[] = [];
@@ -352,7 +370,6 @@ export class Engine {
   setPad(dir: Dir | null) {
     this.pad = dir;
     if (dir) this.path = [];
-    if (dir && this.mode === "battle" && this.battle?.phase === "menu") this.moveSelection(dir);
   }
 
   pressA() {
@@ -361,13 +378,6 @@ export class Engine {
     else if (this.mode === "dialogue") this.advanceDialogue();
     else if (this.mode === "battle") this.battleA();
     else if (this.mode === "explore" && !this.player.moving) this.interact();
-  }
-
-  choose(index: number) {
-    const b = this.battle;
-    if (!b || b.phase !== "menu") return;
-    b.selected = index;
-    this.battleA();
   }
 
   setPaused(paused: boolean) {
@@ -433,10 +443,16 @@ export class Engine {
   debug = {
     collectAll: () => {
       for (const v of this.map.verses) this.collected.add(v.index);
-      this.echoes = this.map.verses.length;
       this.openPortal();
     },
-    fight: () => this.startBattle(null, false),
+    /** Starts a battle against a shadow, by name if given (each name sings its own way). */
+    fight: (name?: string) => this.startBattle(null, false, name),
+    /** The battle's clock and notes, to answer them on time from a test. */
+    battle: () => {
+      const b = this.battle;
+      return b ? { phase: b.phase, hp: b.hp, lesson: b.lesson, style: b.style, clock: b.clock, notes: b.notes.map((n) => ({ at: n.at, result: n.result, hold: n.hold })) } : null;
+    },
+    press: () => this.pressA(),
     guardian: () => this.startBattle(null, true),
     win: () => {
       if (this.battle) {
@@ -653,13 +669,16 @@ export class Engine {
       e.preventDefault();
       if (this.paused) return;
       if (!this.held.includes(dir)) this.held.push(dir);
-      if (!e.repeat && this.mode === "battle" && this.battle?.phase === "menu") this.moveSelection(dir);
       if (this.mode === "explore") this.path = [];
       return;
     }
     if (e.key === " " || e.key === "Enter" || e.key === "z" || e.key === "Z" || e.key === "e" || e.key === "E") {
       e.preventDefault();
       if (!e.repeat) this.pressA();
+    }
+    if ((e.key === "h" || e.key === "H") && this.mode === "battle") {
+      e.preventDefault();
+      this.flee();
     }
   };
 
@@ -1106,7 +1125,6 @@ export class Engine {
 
   private collect(v: Verse) {
     this.collected.add(v.index);
-    this.echoes++;
     this.path = [];
     const total = this.map.verses.length;
     this.o.audio.verse();
@@ -1348,40 +1366,44 @@ export class Engine {
 
   // ----- Battle --------------------------------------------------------------
 
-  private startBattle(shadow: Shadow | null, guardian: boolean) {
-    const name = guardian ? `La sombra de ${this.o.level.name}` : (shadow?.name ?? pick(this.rng, ["Duda", "Miedo", "Olvido", "Ruido", "Vacío"]));
-    const hp = guardian ? Math.min(10, 6 + Math.floor(this.difficulty / 3)) : Math.min(6, 3 + Math.floor(this.difficulty / 4));
+  private startBattle(shadow: Shadow | null, guardian: boolean, forced?: string) {
+    const name = guardian ? `La sombra de ${this.o.level.name}` : (shadow?.name ?? forced ?? pick(this.rng, ["Duda", "Miedo", "Olvido", "Ruido", "Vacío"]));
+    const styles = guardian ? this.guardianStyles() : [{ style: styleOf(name), name }];
+    const lesson = !guardian && !getProgress().rehearsed;
+    // The rehearsal leaves a little darkness for one real phrase after the practice.
+    const hp = guardian ? 10 + Math.floor(this.difficulty / 3) : lesson ? 7 : 4 + Math.floor(this.difficulty / 5);
     const origin = shadow ? { x: lerp(shadow.fromX, shadow.x, shadow.t), y: lerp(shadow.fromY, shadow.y, shadow.t) } : this.playerPos();
     const count = guardian ? 120 : 80;
     this.battle = {
       guardian,
       name,
+      styles,
+      style: styles[0].style,
       hp,
       maxHp: hp,
       phase: "intro",
-      text: guardian
-        ? `${name} se levanta y tapa el título.`
-        : shadow
-          ? `${name} te alcanzó.`
-          : `Algo se mueve en la penumbra. Es ${name}.`,
+      text: "",
       hint: "",
-      selected: 0,
+      verse: false,
       shadow,
       clock: 0,
       intro: 0,
+      timing: timing(this.difficulty, guardian),
+      nextBeat: 0,
+      beats: 0,
+      pulse: 0,
       notes: [],
-      noteTime: 0.9,
-      noteIndex: 0,
-      hits: 0,
-      perfects: 0,
-      next: null,
-      textClock: 0,
+      phrases: 0,
+      misses: 0,
+      restUntil: 0,
+      endAt: 0,
+      lesson: lesson ? 1 : 0,
+      bolts: [],
+      flare: 0,
+      wound: 0,
+      losing: 0,
       hurt: 0,
       dying: 0,
-      turn: 0,
-      defendStart: 0,
-      defendTime: 0.9,
-      defendResult: null,
       popups: [],
       particles: Array.from({ length: count }, () => ({
         a: this.rng() * Math.PI * 2,
@@ -1400,202 +1422,186 @@ export class Engine {
     this.emit();
   }
 
-  private battleOptions(b: Battle): BattleOption[] {
-    return [
-      { id: "sing", label: "Cantar", enabled: true },
-      { id: "recall", label: `Recordar (${this.echoes})`, enabled: this.echoes > 0 },
-      { id: "breathe", label: "Respirar", enabled: this.light < this.o.maxLight },
-      { id: "flee", label: "Huir", enabled: !b.guardian },
-    ];
+  /** The guardian opens plainly, then sings like each kind of shadow of its page, one phrase each. */
+  private guardianStyles() {
+    const kinds = new Map<Style, string>();
+    for (const s of this.shadows) {
+      const style = styleOf(s.name);
+      if (style !== "steady" && !kinds.has(style)) kinds.set(style, s.name);
+    }
+    return [{ style: "steady" as Style, name: "" }, ...[...kinds].slice(0, 3).map(([style, name]) => ({ style, name }))];
   }
 
-  private battleText(text: string, next: () => void) {
+  /** What to tell the player before the next phrase, if anything. */
+  private phraseHint() {
     const b = this.battle!;
-    b.phase = "text";
+    if (b.lesson === 1) return this.o.touch ? "Cuando la nota toque tu luz, tocá la pantalla." : "Cuando la nota toque tu luz, apretá Espacio.";
+    if (b.lesson === 2) return "Ahora vienen tres seguidas. Respondé cada una cuando llegue.";
+    const entry = b.styles[b.phrases % b.styles.length];
+    if (b.guardian) {
+      if (entry.name) return `Ahora canta como ${entry.name}.`;
+      return b.phrases === 0 && b.styles.length > 1 ? "Canta con la voz de las sombras de esta página." : "";
+    }
+    if (entry.style === "steady" || getProgress().heard.includes(entry.style)) return "";
+    updateProgress((p) => ({ ...p, heard: [...p.heard, entry.style] }));
+    return tell(entry.style, b.name);
+  }
+
+  private whisper() {
+    const b = this.battle!;
+    const line = b.guardian ? pick(this.rng, wholeLines(this.o.level.stanzas)) : doubt(this.rng, b.style);
+    this.o.audio.whisper(0, 0.05);
+    return `${b.name}: «${line}»`;
+  }
+
+  /** A pause between phrases: the shadow speaks, the pulse goes on. */
+  private rest(text: string, hint: string, length = 0, verse = false) {
+    const b = this.battle!;
+    b.phase = "rest";
     b.text = text;
-    b.hint = "";
-    b.next = next;
-    b.textClock = 0;
+    b.hint = hint;
+    b.verse = verse;
+    b.restUntil = b.clock + (length || clamp(1.2 + text.length * 0.03, 2, 3.4));
     this.emit();
   }
 
-  private toMenu() {
+  private startPhrase() {
     const b = this.battle!;
-    b.phase = "menu";
-    b.text = "¿Qué hacés?";
-    b.hint = "";
-    this.emit();
-  }
-
-  private moveSelection(dir: Dir) {
-    const b = this.battle!;
-    const col = b.selected % 2;
-    const row = Math.floor(b.selected / 2);
-    if (dir === "left" || dir === "right") b.selected = row * 2 + (1 - col);
-    else b.selected = (1 - row) * 2 + col;
-    this.o.audio.move();
+    const entry = b.styles[b.phrases % b.styles.length];
+    const style: Style = b.lesson ? "steady" : entry.style;
+    const count = b.lesson === 1 ? 1 : b.lesson === 2 ? 3 : b.guardian ? 6 : this.difficulty >= 8 ? 5 : 4;
+    const beat = b.timing.beat;
+    // The first note reaches the light on a beat, and leaves the shadow after now.
+    let first = b.nextBeat;
+    while (first - travelBeats(style) * beat < b.clock + 0.05) first += beat;
+    b.style = style;
+    b.notes = phrase(style, count, first, beat, this.rng).map((n) => ({ ...n, style, result: null, doneAt: 0, called: false, hold: b.lesson === 1 }));
+    b.misses = 0;
+    b.phase = "call";
+    b.verse = false;
     this.emit();
   }
 
   private battleA() {
     const b = this.battle;
     if (!b) return;
-    switch (b.phase) {
-      case "intro":
-        if (b.intro >= 1) this.battleText(b.text, () => this.toMenu());
-        break;
-      case "text": {
-        const next = b.next;
-        b.next = null;
-        this.o.audio.ui();
-        next?.();
-        break;
-      }
-      case "menu":
-        this.chooseOption(this.battleOptions(b)[b.selected]);
-        break;
-      case "sing": {
-        const n = b.notes[b.noteIndex];
-        if (!n || n.result) return;
-        const elapsed = b.clock - n.start;
-        if (elapsed < -0.05) return;
-        const delta = Math.abs(elapsed - b.noteTime);
-        this.resolveNote(delta < 0.075 ? "perfect" : delta < 0.17 ? "good" : "miss");
-        break;
-      }
-      case "defend": {
-        if (b.defendResult) return;
-        const elapsed = b.clock - b.defendStart;
-        if (elapsed < -0.05) return;
-        this.resolveDefend(Math.abs(elapsed - b.defendTime) < 0.16);
-        break;
-      }
-    }
-  }
-
-  private chooseOption(option: BattleOption) {
-    const b = this.battle!;
-    if (!option.enabled) {
-      this.o.audio.bump();
-      b.hint =
-        option.id === "recall"
-          ? "Todavía no recuperaste ningún verso de esta página."
-          : option.id === "breathe"
-            ? "Tu luz ya está completa."
-            : "De esta sombra no se puede huir.";
-      this.emit();
+    if (b.phase === "rest") {
+      // Tapping through the words brings the next phrase sooner.
+      b.restUntil = Math.min(b.restUntil, b.clock + 0.3);
       return;
     }
-    this.o.audio.confirm();
-    if (option.id === "sing") {
-      const count = b.guardian ? 4 : 3;
-      b.noteTime = Math.max(0.55, 0.95 - this.difficulty * 0.022 - (b.guardian ? 0.08 : 0));
-      b.notes = Array.from({ length: count }, (_, i) => ({ start: b.clock + 0.55 + i * (b.noteTime + 0.4), result: null }));
-      b.noteIndex = 0;
-      b.hits = 0;
-      b.perfects = 0;
-      b.phase = "sing";
-      b.text = "Cantás.";
-      b.hint = this.o.touch ? "Tocá la pantalla cuando el anillo llegue al círculo." : "Apretá Espacio cuando el anillo llegue al círculo.";
-      this.emit();
-    } else if (option.id === "recall") {
-      this.echoes--;
-      const lines = this.map.verses.filter((v) => this.collected.has(v.index)).flatMap((v) => v.lines);
-      const line = lines.length ? pick(this.rng, lines) : this.o.level.stanzas.flat()[0];
-      this.o.audio.recall();
-      b.hurt = 1;
-      this.battleText(`Recordás: «${line}»`, () => this.damage(2, "El verso le quita 2 de oscuridad."));
-    } else if (option.id === "breathe") {
-      this.light = Math.min(this.o.maxLight, this.light + 1);
-      this.o.audio.lamp();
-      this.battleText("Respirás hondo. Tu luz crece.", () => this.shadowTurn());
-    } else if (option.id === "flee") {
-      if (this.rng() < 0.7) {
-        this.battleText("Te escapás entre las sombras.", () => this.closeBattle("fled"));
-      } else this.battleText("La sombra no te deja ir.", () => this.shadowTurn());
+    if (b.phase !== "call" || b.losing > 0) return;
+    // The press happened between frames: count it from the last one.
+    const now = b.clock + clamp((performance.now() - this.last) / 1000, 0, 0.05);
+    const n = b.notes.find((note) => !note.result);
+    if (!n) return;
+    const { good, perfect, early } = b.timing;
+    const delta = now - n.at;
+    if (n.hold) {
+      if (delta >= -good) this.answer(n, "perfect");
+      return;
     }
+    if (delta < -(good + early)) return;
+    if (delta < -good) this.missNote(n, "early");
+    else this.answer(n, Math.abs(delta) <= perfect ? "perfect" : "good");
   }
 
-  private resolveNote(result: "perfect" | "good" | "miss") {
+  private popup(text: string, color: string, big: boolean, low = false) {
     const b = this.battle!;
-    const n = b.notes[b.noteIndex];
+    // A new grade replaces the last one, so they never pile up.
+    if (!low) b.popups = b.popups.filter((pop) => pop.low);
+    b.popups.push({ text, t: 0, color, big, low });
+  }
+
+  private answer(n: BattleNote, result: "perfect" | "good") {
+    const b = this.battle!;
     n.result = result;
-    const degree = [0, 2, 4, 7][b.noteIndex % 4];
-    if (result === "miss") this.o.audio.miss();
-    else {
-      this.o.audio.hum(degree, result);
-      b.hits++;
-      b.hurt = 1;
-      if (result === "perfect") b.perfects++;
-    }
-    b.popups.push({
-      text: result === "perfect" ? "Perfecto" : result === "good" ? "Bien" : "Fuera de tiempo",
-      t: 0,
-      color: result === "miss" ? "#8a8f9c" : result === "perfect" ? "#fff1c2" : "#f7f7f5",
-      y: 0,
-    });
-    b.noteIndex++;
+    n.doneAt = b.clock;
+    this.o.audio.hum(n.degree, result);
+    b.bolts.push({ t: 0, amount: 1, big: false });
+    this.popup(result === "perfect" ? "¡Justo!" : "Bien", result === "perfect" ? "#fff1c2" : "#f7f7f5", result === "perfect");
   }
 
-  private finishSing() {
+  private missNote(n: BattleNote, result: "early" | "late") {
     const b = this.battle!;
-    const bonus = b.perfects === b.notes.length ? 1 : 0;
-    const total = b.hits + bonus;
-    if (total === 0) this.battleText("Tu canto se pierde en el ruido.", () => this.shadowTurn());
-    else this.damage(total, bonus ? `¡Todo afinado! Tu canto le quita ${total} de oscuridad.` : `Tu canto le quita ${total} de oscuridad.`);
-  }
-
-  private damage(amount: number, text: string) {
-    const b = this.battle!;
-    b.hp = Math.max(0, b.hp - amount);
-    b.hurt = 1;
+    n.result = result;
+    n.doneAt = b.clock;
+    this.o.audio.miss();
+    this.popup(result === "early" ? "Temprano" : "Tarde", "#b4b8c4", false);
+    if (b.lesson) return;
+    b.misses++;
+    // The first miss of a phrase dims the light, and then every third one (every second against a guardian).
+    if (b.misses % (b.guardian ? 2 : 3) !== 1) return;
+    this.light = Math.max(0, this.light - 1);
+    b.wound = 1;
+    this.o.audio.hit();
+    if (!this.o.reducedMotion) this.shake = 0.7;
+    this.popup("−1 de luz", "#ff5a5f", false, true);
+    if (this.light <= 0) b.losing = 0.9;
     this.emit();
-    if (b.hp <= 0) this.win();
-    else this.battleText(text, () => this.shadowTurn());
   }
 
-  private shadowTurn() {
+  private endPhrase() {
     const b = this.battle!;
-    b.turn++;
-    const poem = this.o.level.stanzas.flat();
-    const doubt = b.guardian || this.rng() < 0.3 ? pick(this.rng, poem) : pick(this.rng, DOUBTS);
-    this.o.audio.whisper(0, 0.06);
-    this.battleText(`${b.name}: «${doubt}»`, () => {
-      b.phase = "defend";
-      b.defendStart = b.clock + 0.45;
-      b.defendTime = Math.max(0.6, 1 - this.difficulty * 0.02 - (b.guardian ? 0.1 : 0));
-      b.defendResult = null;
-      b.text = "¡Resistí!";
-      b.hint = this.o.touch ? "Tocá cuando la sombra llegue a tu luz." : "Apretá Espacio cuando la sombra llegue a tu luz.";
-      this.emit();
-    });
-  }
-
-  private resolveDefend(blocked: boolean) {
-    const b = this.battle!;
-    b.defendResult = blocked ? "block" : "hit";
-    if (blocked) {
-      this.o.audio.block();
-      b.popups.push({ text: "Resististe", t: 0, color: "#fff1c2", y: 1 });
+    b.phrases++;
+    if (b.lesson === 1) {
+      b.lesson = 2;
+      this.rest("¡Eso! Tu canto le devolvió la luz.", this.phraseHint(), 2.6);
+      return;
+    }
+    const whole = b.notes.every((n) => n.result === "perfect" || n.result === "good");
+    if (b.lesson === 2) {
+      b.lesson = 0;
+      updateProgress((p) => ({ ...p, rehearsed: true }));
+    }
+    const hint = this.phraseHint();
+    if (!whole) {
+      this.rest(this.whisper(), hint);
+      return;
+    }
+    // A whole phrase answered: the Voice remembers a verse of the page, and it hits harder.
+    b.flare = 1;
+    if (this.light < this.o.maxLight) {
+      this.light++;
+      this.popup("+1 de luz", "#fff1c2", false, true);
+    }
+    const lines = this.map.verses.filter((v) => this.collected.has(v.index)).flatMap((v) => v.lines);
+    if (lines.length) {
+      this.o.audio.recall();
+      b.bolts.push({ t: -0.3, amount: 2, big: true });
+      this.rest(`Recordás: «${pick(this.rng, lines)}»`, hint, 3.2, true);
     } else {
-      const amount = b.guardian && b.turn % 2 === 0 ? 2 : 1;
-      this.light = Math.max(0, this.light - amount);
-      this.o.audio.hit();
-      if (!this.o.reducedMotion) this.shake = 1;
-      b.popups.push({ text: `−${amount} de luz`, t: 0, color: "#ff5a5f", y: 1 });
+      this.o.audio.lamp();
+      b.bolts.push({ t: -0.3, amount: 1, big: true });
+      this.rest("¡Frase entera! Tu voz se afina.", hint);
     }
-    this.emit();
+  }
+
+  /** Runs away from a shadow that roams the page; a guardian can't be fled. */
+  flee() {
+    const b = this.battle;
+    if (!b || b.guardian || this.paused || this.mode !== "battle" || (b.phase !== "rest" && b.phase !== "call") || b.losing > 0) return;
+    this.o.audio.ui();
+    this.closeBattle("fled");
+    this.showToast("Te escapaste. La sombra quedó aturdida.");
   }
 
   private win() {
     const b = this.battle!;
     b.phase = "end";
     b.dying = 0.001;
-    b.clock = 0;
+    b.endAt = b.clock;
+    b.bolts = [];
     this.o.audio.victory();
-    if (!b.guardian) this.light = Math.min(this.o.maxLight, this.light + 1);
-    b.text = b.guardian ? "La sombra se rompe en mil pedazos de luz." : `${b.name} se deshace en luz. Tu luz crece.`;
+    if (b.lesson) {
+      b.lesson = 0;
+      updateProgress((p) => ({ ...p, rehearsed: true }));
+    }
+    const grew = !b.guardian && this.light < this.o.maxLight;
+    if (grew) this.light++;
+    b.text = b.guardian ? "La sombra se rompe en mil pedazos de luz." : `${b.name} se deshace en luz.${grew ? " Tu luz crece." : ""}`;
     b.hint = "";
+    b.verse = false;
     this.emit();
   }
 
@@ -1630,39 +1636,62 @@ export class Engine {
     const b = this.battle!;
     b.clock += dt;
     b.hurt = Math.max(0, b.hurt - dt * 2.5);
+    b.pulse = Math.max(0, b.pulse - dt * 3);
+    b.flare = Math.max(0, b.flare - dt * 0.7);
+    b.wound = Math.max(0, b.wound - dt * 2);
     for (const pop of b.popups) pop.t += dt;
-    b.popups = b.popups.filter((pop) => pop.t < 1.2);
-    switch (b.phase) {
-      case "intro":
-        b.intro = Math.min(1, b.intro + dt / (this.o.reducedMotion ? 0.4 : 0.9));
-        if (b.intro >= 1 && b.clock > (this.o.reducedMotion ? 0.6 : 1.3)) this.battleText(b.text, () => this.toMenu());
-        break;
-      case "text":
-        b.textClock += dt;
-        if (b.textClock > Math.max(2.6, b.text.length * 0.055)) this.battleA();
-        break;
-      case "sing": {
-        const n = b.notes[b.noteIndex];
-        if (n && !n.result && b.clock - n.start > b.noteTime + 0.17) this.resolveNote("miss");
-        const lastNote = b.notes[b.notes.length - 1];
-        if (b.noteIndex >= b.notes.length && b.clock > lastNote.start + b.noteTime + 0.55) this.finishSing();
-        break;
+    b.popups = b.popups.filter((pop) => pop.t < (pop.low ? 1.4 : 0.9));
+    if (b.phase === "intro") {
+      b.intro = Math.min(1, b.intro + dt / (this.o.reducedMotion ? 0.4 : 0.9));
+      if (b.intro >= 1 && b.clock > (this.o.reducedMotion ? 0.6 : 1.3)) {
+        b.nextBeat = b.clock + 0.1;
+        this.rest(this.whisper(), this.phraseHint());
       }
-      case "defend": {
-        const elapsed = b.clock - b.defendStart;
-        if (!b.defendResult && elapsed > b.defendTime + 0.16) this.resolveDefend(false);
-        if (b.defendResult && elapsed > b.defendTime + 0.85) {
-          if (this.light <= 0) this.lose();
-          else if (b.defendResult === "block") this.battleText("Resististe. La sombra retrocede.", () => this.toMenu());
-          else this.battleText("La sombra te alcanzó. Tu luz baja.", () => this.toMenu());
-        }
-        break;
-      }
-      case "end":
-        b.dying = Math.min(1, b.dying + dt / 1.6);
-        if (b.clock > 2.4) this.closeBattle("won");
-        break;
+      return;
     }
+    if (b.phase === "end") {
+      b.dying = Math.min(1, b.dying + dt / 1.6);
+      if (b.clock - b.endAt > 2.4) this.closeBattle("won");
+      return;
+    }
+    // One pulse for the music, the light and the notes; a silent shadow mutes it while it sings.
+    while (b.clock >= b.nextBeat) {
+      if (!(b.phase === "call" && b.style === "rests")) this.o.audio.pulse(b.beats % 4 === 0);
+      b.pulse = 1;
+      b.beats++;
+      b.nextBeat += b.timing.beat;
+    }
+    for (const bolt of b.bolts) {
+      bolt.t += dt;
+      if (bolt.t >= BOLT_TIME) {
+        b.hp = Math.max(0, b.hp - bolt.amount);
+        b.hurt = 1;
+        this.emit();
+      }
+    }
+    b.bolts = b.bolts.filter((bolt) => bolt.t < BOLT_TIME);
+    if (b.hp <= 0) {
+      this.win();
+      return;
+    }
+    if (b.losing > 0) {
+      b.losing -= dt;
+      if (b.losing <= 0) this.lose();
+      return;
+    }
+    if (b.phase === "rest") {
+      if (b.clock >= b.restUntil) this.startPhrase();
+      return;
+    }
+    for (const n of b.notes) {
+      if (!n.called && b.clock >= n.at - n.travel) {
+        n.called = true;
+        this.o.audio.shadowNote(n.degree);
+      }
+      if (!n.result && !n.hold && b.clock > n.at + b.timing.good) this.missNote(n, "late");
+    }
+    if (b.losing > 0) return;
+    if (b.notes.every((n) => n.result) && !b.bolts.length && b.clock > Math.max(...b.notes.map((n) => n.doneAt)) + 0.35) this.endPhrase();
   }
 
   // ----- Blackout ------------------------------------------------------------
@@ -2700,7 +2729,7 @@ export class Engine {
     const dying = b.dying;
     const painted = b.guardian ? this.creatures.guardian : this.creatures.shadow;
     if (painted) {
-      const breathe = 1 + Math.sin(t * 1.6) * 0.025;
+      const breathe = 1 + Math.sin(t * 1.6) * 0.02 + b.pulse * b.pulse * 0.015;
       const sz = size * (portrait ? 2.5 : 2.2) * breathe;
       const jitter = b.hurt > 0 ? (this.rng() - 0.5) * 14 * b.hurt * this.dpr : 0;
       const x = cx - sz / 2 + jitter;
@@ -2766,72 +2795,167 @@ export class Engine {
       }
     }
 
-    // Your light, below.
-    const ly = portrait ? h * 0.6 : h * 0.66;
-    const lr = (10 + this.light * 3.2) * this.dpr * (1 + Math.sin(t * 6) * 0.03);
-    const lg = ctx.createRadialGradient(cx, ly, 0, cx, ly, lr * 3);
-    lg.addColorStop(0, "rgba(255,246,216,0.95)");
-    lg.addColorStop(0.25, "rgba(255,217,138,0.55)");
+    // Your light, below: the one place where everything happens.
+    const ly = portrait ? h * 0.62 : h * 0.68;
+    const R = clamp(Math.min(w, h) * 0.07, 26 * this.dpr, 44 * this.dpr);
+    const strength = 0.5 + 0.5 * (this.light / this.o.maxLight);
+    const beat = b.pulse * b.pulse;
+    const glowR = R * 2.8 * strength * (1 + beat * 0.08) * (1 + b.flare * 0.6);
+    const lg = ctx.createRadialGradient(cx, ly, 0, cx, ly, glowR);
+    lg.addColorStop(0, `rgba(255,246,216,${0.95 * strength})`);
+    lg.addColorStop(0.16, `rgba(255,217,138,${0.6 * strength})`);
     lg.addColorStop(1, "rgba(255,217,138,0)");
     ctx.fillStyle = lg;
-    ctx.fillRect(cx - lr * 3, ly - lr * 3, lr * 6, lr * 6);
-
-    // Rings: singing aims at the shadow, defending protects your light.
-    const ringBase = size * 0.55;
-    if (b.phase === "sing") {
-      ctx.strokeStyle = "rgba(247,247,245,0.55)";
-      ctx.lineWidth = 2 * this.dpr;
-      ctx.beginPath();
-      ctx.arc(cx, cy, ringBase, 0, Math.PI * 2);
-      ctx.stroke();
-      const n = b.notes[b.noteIndex];
-      if (n) {
-        const p = (b.clock - n.start) / b.noteTime;
-        if (p > -0.4) {
-          const radius = ringBase * (1 + 2.2 * Math.max(0, 1 - p)) * (p > 1 ? 1 - (p - 1) * 0.6 : 1);
-          ctx.strokeStyle = `rgba(255,241,194,${clamp(0.3 + p)})`;
-          ctx.lineWidth = 3 * this.dpr;
-          ctx.beginPath();
-          ctx.arc(cx, cy, Math.max(2, radius), 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
-      b.notes.forEach((note, i) => {
-        ctx.fillStyle = note.result === "miss" ? "rgba(138,143,156,0.9)" : note.result ? "rgba(255,241,194,1)" : "rgba(247,247,245,0.25)";
-        ctx.beginPath();
-        ctx.arc(cx + (i - (b.notes.length - 1) / 2) * 18 * this.dpr, cy + ringBase + 26 * this.dpr, 4 * this.dpr, 0, Math.PI * 2);
-        ctx.fill();
-      });
+    ctx.fillRect(cx - glowR, ly - glowR, glowR * 2, glowR * 2);
+    if (b.wound > 0) {
+      const wg = ctx.createRadialGradient(cx, ly, 0, cx, ly, R * 2.4);
+      wg.addColorStop(0, `rgba(255,40,50,${0.55 * b.wound})`);
+      wg.addColorStop(1, "rgba(255,40,50,0)");
+      ctx.fillStyle = wg;
+      ctx.fillRect(cx - R * 2.4, ly - R * 2.4, R * 4.8, R * 4.8);
     }
-    if (b.phase === "defend") {
-      const target = lr * 1.8;
-      ctx.strokeStyle = "rgba(255,241,194,0.6)";
-      ctx.lineWidth = 2 * this.dpr;
-      ctx.beginPath();
-      ctx.arc(cx, ly, target, 0, Math.PI * 2);
-      ctx.stroke();
-      const p = (b.clock - b.defendStart) / b.defendTime;
-      if (p > -0.4 && !b.defendResult) {
-        const radius = target * (1 + 3 * Math.max(0, 1 - p));
-        ctx.strokeStyle = `rgba(199,36,47,${clamp(0.35 + p)})`;
-        ctx.lineWidth = 4 * this.dpr;
+
+    const playing = b.phase === "call" || b.phase === "rest";
+    const progress = (n: BattleNote) => (b.clock - (n.at - n.travel)) / n.travel;
+    // Notes leave the shadow's mouth, or come from the sides when it won't look at you.
+    const source = (side: number) =>
+      side === 0 ? { x: cx, y: cy - size * 0.05 } : { x: cx + side * Math.min(w * 0.42, size * 1.7), y: cy + size * 0.45 };
+
+    // The ring around the light: where the notes must be answered. It glows as one comes close.
+    let near = 0;
+    if (b.phase === "call") for (const n of b.notes) if (!n.result) near = Math.max(near, clamp((progress(n) - 0.55) / 0.45));
+    const ringR = R * (1 + beat * 0.07);
+    ctx.fillStyle = `rgba(255,226,160,${0.05 + 0.1 * near})`;
+    ctx.beginPath();
+    ctx.arc(cx, ly, ringR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 3 * this.dpr;
+    ctx.strokeStyle = `rgba(255,226,160,${(playing ? 0.45 : 0.15) + 0.55 * near})`;
+    ctx.stroke();
+
+    if (b.phase === "call") {
+      // Faint paths, so it's clear where each note is going.
+      ctx.save();
+      ctx.setLineDash([2 * this.dpr, 7 * this.dpr]);
+      ctx.lineWidth = 1.5 * this.dpr;
+      ctx.strokeStyle = "rgba(255,120,128,0.16)";
+      for (const side of new Set(b.notes.filter((n) => !n.result).map((n) => n.side))) {
+        const s = source(side);
+        const len = Math.hypot(cx - s.x, ly - s.y);
         ctx.beginPath();
-        ctx.arc(cx, ly, Math.max(2, radius), 0, Math.PI * 2);
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(cx - ((cx - s.x) / len) * ringR, ly - ((ly - s.y) / len) * ringR);
         ctx.stroke();
       }
+      ctx.restore();
     }
 
-    // Floating feedback.
+    // The shadow's notes on their way, and what became of the answered ones.
+    for (const n of b.notes) {
+      if (n.result) {
+        const age = b.clock - n.doneAt;
+        if (age < 0 || age > 0.5) continue;
+        const k = age / 0.5;
+        const answered = n.result === "perfect" || n.result === "good";
+        ctx.strokeStyle = answered ? `rgba(255,236,180,${(1 - k) * (n.result === "perfect" ? 1 : 0.7)})` : `rgba(255,60,70,${(1 - k) * 0.8})`;
+        ctx.lineWidth = (answered ? 4 : 3) * this.dpr * (1 - k * 0.6);
+        ctx.beginPath();
+        ctx.arc(cx, ly, ringR * (1 + k * (answered ? 1.6 : 0.9)), 0, Math.PI * 2);
+        ctx.stroke();
+        continue;
+      }
+      let p = progress(n);
+      if (p < 0) continue;
+      if (n.hold) p = Math.min(p, 1);
+      const s = source(n.side);
+      const x = lerp(s.x, cx, p) + (n.style === "offbeat" ? Math.sin(t * 37 + n.at * 11) * 1.6 * this.dpr : 0);
+      const y = lerp(s.y, ly, p);
+      let alpha = clamp(p * 6) * (1 - b.dying);
+      // Olvido's notes fade on the way: the pulse tells when they arrive.
+      if (n.style === "fade") alpha *= p < 0.3 ? 1 : clamp(1 - (p - 0.3) / 0.25);
+      this.drawDarkNote(ctx, x, y, R * (0.34 + 0.14 * Math.min(1, p)), alpha);
+    }
+
+    // Answered notes fly back at the shadow as light.
+    for (const bolt of b.bolts) {
+      if (bolt.t < 0) continue;
+      const f = bolt.t / BOLT_TIME;
+      for (let k = 0; k < 4; k++) {
+        const g = Math.max(0, f - k * 0.07);
+        const e = 1 - (1 - g) * (1 - g);
+        const x = cx + Math.sin(g * Math.PI) * R * (bolt.big ? 0 : 0.7);
+        const y = lerp(ly - ringR, cy, e);
+        const r = R * (bolt.big ? 0.7 : 0.32) * (1 - k * 0.18);
+        const bg = ctx.createRadialGradient(x, y, 0, x, y, r * 2);
+        bg.addColorStop(0, `rgba(255,248,224,${0.95 - k * 0.22})`);
+        bg.addColorStop(0.35, `rgba(255,214,130,${0.6 - k * 0.14})`);
+        bg.addColorStop(1, "rgba(255,214,130,0)");
+        ctx.fillStyle = bg;
+        ctx.fillRect(x - r * 2, y - r * 2, r * 4, r * 4);
+      }
+    }
+
+    // A whole phrase answered: a wave of light.
+    if (b.flare > 0) {
+      const k = 1 - b.flare;
+      ctx.strokeStyle = `rgba(255,236,180,${b.flare * 0.7})`;
+      ctx.lineWidth = 6 * this.dpr * b.flare;
+      ctx.beginPath();
+      ctx.arc(cx, ly, ringR * (1.2 + k * 5), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    // The first battle points at the light and says when.
+    if (b.lesson && playing) {
+      const held = b.notes.find((n) => n.hold && !n.result && b.clock >= n.at);
+      const cue = held ?? (b.lesson === 2 ? b.notes.find((n) => !n.result && Math.abs(b.clock - n.at) < 0.18) : undefined);
+      ctx.font = `italic ${Math.round(16 * this.dpr)}px ${this.font}`;
+      ctx.fillStyle = "rgba(247,247,245,0.75)";
+      ctx.fillText(held ? (this.o.touch ? "Tocá" : "Espacio") : "Tu luz", cx, ly + ringR + 24 * this.dpr);
+      if (cue) {
+        ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 10);
+        ctx.font = `italic ${Math.round(30 * this.dpr)}px ${this.font}`;
+        ctx.fillStyle = "#fff1c2";
+        ctx.fillText("¡Ahora!", cx, ly - ringR - 16 * this.dpr);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // How each answer went, over the light; what happened to the light itself, beside it.
     for (const pop of b.popups) {
-      ctx.globalAlpha = clamp(1.2 - pop.t);
+      ctx.globalAlpha = clamp((pop.low ? 1.4 : 0.9) - pop.t, 0, 1) * clamp(pop.t * 12);
       ctx.fillStyle = pop.color;
-      ctx.font = `italic ${Math.round(22 * this.dpr)}px ${this.font}`;
-      const py = (pop.y ? ly - lr * 2.2 : cy - size * 0.75) - pop.t * 30 * this.dpr;
-      ctx.fillText(pop.text, cx, py);
+      ctx.font = `italic ${Math.round((pop.big ? 30 : pop.low ? 20 : 24) * this.dpr)}px ${this.font}`;
+      ctx.textAlign = pop.low ? "left" : "center";
+      if (pop.low) ctx.fillText(pop.text, cx + ringR + 14 * this.dpr, ly + 7 * this.dpr - pop.t * 12 * this.dpr);
+      else ctx.fillText(pop.text, cx, ly - ringR - 18 * this.dpr - pop.t * 40 * this.dpr);
     }
     ctx.globalAlpha = 1;
+    ctx.textAlign = "center";
     ctx.restore();
+  }
+
+  /** A note sung by a shadow: a ball of darkness with a red ember inside. */
+  private drawDarkNote(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number) {
+    if (alpha <= 0.01) return;
+    ctx.globalAlpha = alpha;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r * 1.8);
+    g.addColorStop(0, "rgba(255,80,90,0.95)");
+    g.addColorStop(0.2, "rgba(160,16,28,0.92)");
+    g.addColorStop(0.58, "rgba(12,6,12,0.94)");
+    g.addColorStop(1, "rgba(12,6,12,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,96,106,0.75)";
+    ctx.lineWidth = 1.5 * this.dpr;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   // ----- UI state ------------------------------------------------------------
@@ -2881,8 +3005,8 @@ export class Engine {
               phase: b.phase,
               text: b.text,
               hint: b.hint,
-              options: this.battleOptions(b),
-              selected: b.selected,
+              verse: b.verse,
+              canFlee: !b.guardian && (b.phase === "rest" || b.phase === "call"),
             }
           : null,
       reveal:

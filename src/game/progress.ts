@@ -9,11 +9,15 @@ export type Progress = {
   /** Ids of the rescued pages. */
   done: string[];
   seenPrologue: boolean;
+  /** Whether the player already went through the first, guided battle. */
+  rehearsed: boolean;
+  /** The kinds of shadow whose way of singing was already explained. */
+  heard: string[];
   audio: AudioSettings;
 };
 
 const KEY = "die-engel-singen:la-voz";
-const EMPTY: Progress = { done: [], seenPrologue: false, audio: DEFAULT_AUDIO };
+const EMPTY: Progress = { done: [], seenPrologue: false, rehearsed: false, heard: [], audio: DEFAULT_AUDIO };
 
 let cache: Progress | null = null;
 const listeners = new Set<() => void>();
@@ -26,6 +30,8 @@ function read(): Progress {
     return {
       done: Array.isArray(parsed.done) ? parsed.done.filter((d) => typeof d === "string") : [],
       seenPrologue: Boolean(parsed.seenPrologue),
+      rehearsed: Boolean(parsed.rehearsed),
+      heard: Array.isArray(parsed.heard) ? parsed.heard.filter((h) => typeof h === "string") : [],
       audio: { ...DEFAULT_AUDIO, ...(parsed.audio ?? {}) },
     };
   } catch {

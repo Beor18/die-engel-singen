@@ -502,7 +502,7 @@ function LevelScreen({
 
       {ui.dialogue && <Dialogue ui={ui} onNext={() => engine.pressA()} touch={touch} />}
 
-      {ui.battle && <BattlePanel ui={ui} touch={touch} onA={() => engine.pressA()} onChoose={(i) => engine.choose(i)} />}
+      {ui.battle && <BattlePanel ui={ui} touch={touch} onA={() => engine.pressA()} onFlee={() => engine.flee()} />}
 
       {ui.blackout && (
         <div className="apagon" role="alert">
@@ -681,12 +681,18 @@ function Dialogue({ ui, onNext, touch }: { ui: UIState; onNext: () => void; touc
   );
 }
 
-function BattlePanel({ ui, touch, onA, onChoose }: { ui: UIState; touch: boolean; onA: () => void; onChoose: (i: number) => void }) {
+function BattlePanel({ ui, touch, onA, onFlee }: { ui: UIState; touch: boolean; onA: () => void; onFlee: () => void }) {
   const b = ui.battle!;
-  const tapAnywhere = b.phase !== "menu" && b.phase !== "end";
   return (
     <>
-      {tapAnywhere && <button type="button" className="toque-total" aria-label={b.hint || "Seguir"} onPointerDown={(e) => (e.preventDefault(), onA())} />}
+      {b.phase !== "end" && (
+        <button
+          type="button"
+          className="toque-total"
+          aria-label={b.phase === "call" ? "Cantar" : "Seguir"}
+          onPointerDown={(e) => (e.preventDefault(), onA())}
+        />
+      )}
       <div className="batalla-cabecera">
         <Portrait speaker={b.guardian ? "guardian" : "shadow"} />
         <div>
@@ -697,30 +703,24 @@ function BattlePanel({ ui, touch, onA, onChoose }: { ui: UIState; touch: boolean
         </div>
       </div>
       <div className="batalla-panel" aria-live="polite">
-        <div className="batalla-luz" aria-label={`Tu luz: ${ui.light} de ${ui.maxLight}`}>
-          {Array.from({ length: ui.maxLight }, (_, i) => (
-            <span key={i} className={i < ui.light ? "llama" : "llama apagada"} />
-          ))}
-        </div>
-        <p className="batalla-texto">{b.text}</p>
-        {b.hint && <p className="batalla-pista">{b.hint}</p>}
-        {b.phase === "menu" && (
-          <div className="batalla-opciones" role="menu">
-            {b.options.map((o, i) => (
-              <button
-                key={o.id}
-                type="button"
-                role="menuitem"
-                className={`batalla-opcion${i === b.selected ? " elegida" : ""}${o.enabled ? "" : " inactiva"}`}
-                aria-disabled={!o.enabled}
-                onClick={() => onChoose(i)}
-              >
-                {o.label}
-              </button>
+        <div className="batalla-estado">
+          <div className="batalla-luz" role="meter" aria-label="Tu luz" aria-valuemin={0} aria-valuemax={ui.maxLight} aria-valuenow={ui.light}>
+            <span className="batalla-luz-nombre" aria-hidden="true">
+              Tu luz
+            </span>
+            {Array.from({ length: ui.maxLight }, (_, i) => (
+              <span key={i} className={i < ui.light ? "llama" : "llama apagada"} />
             ))}
           </div>
-        )}
-        {b.phase === "text" && <p className="dialogo-seguir">{touch ? "Tocá para seguir" : "Espacio para seguir"}</p>}
+          {b.canFlee && (
+            <button type="button" className="batalla-huir" onClick={onFlee} aria-keyshortcuts="H">
+              Huir
+              {!touch && <span className="tecla">H</span>}
+            </button>
+          )}
+        </div>
+        {b.text && <p className={b.verse ? "batalla-texto batalla-verso" : "batalla-texto"}>{b.text}</p>}
+        {b.hint && <p className="batalla-pista">{b.hint}</p>}
       </div>
     </>
   );

@@ -745,7 +745,7 @@
   display: block;
   height: 100%;
   background: linear-gradient(90deg, var(--firulete), #ff2a36);
-  transition: width 0.5s ease-out;
+  transition: width 0.25s ease-out;
 }
 
 .batalla-panel {
@@ -761,10 +761,6 @@
   pointer-events: none;
 }
 
-.batalla-panel .batalla-opciones {
-  pointer-events: auto;
-}
-
 .batalla-texto {
   margin: 8px 0 0;
   font-size: 1.125rem;
@@ -778,31 +774,58 @@
   color: var(--oro);
 }
 
-.batalla-opciones {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 12px;
+.batalla-estado {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
 }
 
-.batalla-opcion {
+.batalla-luz {
+  align-items: center;
+}
+
+.batalla-luz .llama {
+  width: 9px;
+  height: 13px;
+}
+
+.batalla-luz-nombre {
+  margin-right: 6px;
+  font-size: 0.875rem;
+  font-style: italic;
+  color: rgb(247 247 245 / 0.7);
+}
+
+.batalla-huir {
   appearance: none;
-  min-height: 52px;
-  padding: 8px 12px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 14px;
   border: 1px solid var(--borde);
   background: rgb(247 247 245 / 0.04);
-  font-size: 1.0625rem;
-  text-align: left;
+  font-size: 0.9375rem;
   cursor: pointer;
+  pointer-events: auto;
 }
 
-.batalla-opcion.elegida {
-  border-color: var(--vivo);
-  background: rgb(152 18 26 / 0.35);
+.batalla-huir:hover {
+  border-color: rgb(247 247 245 / 0.4);
 }
 
-.batalla-opcion.inactiva {
-  color: rgb(247 247 245 / 0.4);
+.batalla-huir .tecla {
+  padding: 0 5px;
+  border: 1px solid rgb(247 247 245 / 0.3);
+  font-size: 0.75rem;
+  color: rgb(247 247 245 / 0.65);
+}
+
+.batalla-verso {
+  font-style: italic;
+  color: var(--oro);
 }
 
 .apagon {

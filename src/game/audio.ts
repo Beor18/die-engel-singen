@@ -64,7 +64,7 @@ export class AudioEngine {
   private chordStep = 0;
   private chordTimer: ReturnType<typeof setInterval> | null = null;
   private held: Voice[] = [];
-  private battle: { nodes: AudioNode[]; timer: ReturnType<typeof setInterval> } | null = null;
+  private battle: { nodes: AudioNode[]; out: GainNode } | null = null;
   private rain: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
 
   /** Must be called from a user gesture: browsers only allow audio after one. */
@@ -278,21 +278,27 @@ export class AudioEngine {
       drone.start();
       lfo.start();
       high.start();
-      const beat = () => {
-        const s = this.now + 0.02;
-        this.thump(s, 0.5, out);
-        this.thump(s + 0.2, 0.32, out);
-      };
-      beat();
-      this.battle = { nodes: [drone, lfo, high, out], timer: setInterval(beat, 820) };
+      // The beat itself comes from the battle, so the music and the notes share one pulse.
+      this.battle = { nodes: [drone, lfo, high], out };
     } else if (!on && this.battle) {
-      const { nodes, timer } = this.battle;
-      clearInterval(timer);
-      const out = nodes[3] as GainNode;
+      const { nodes, out } = this.battle;
       out.gain.setTargetAtTime(0, t, 0.3);
-      for (const n of nodes.slice(0, 3)) (n as OscillatorNode).stop(t + 1.5);
+      for (const n of nodes) (n as OscillatorNode).stop(t + 1.5);
       this.battle = null;
     }
+  }
+
+  /** One beat of the battle's pulse; the first of each bar is stronger. */
+  pulse(accent: boolean) {
+    if (!this.ctx || !this.battle) return;
+    this.thump(this.now + 0.005, accent ? 0.5 : 0.3, this.battle.out);
+  }
+
+  /** A note sung by a shadow: low and dark, an octave under the Voice's answer. */
+  shadowNote(degree: number) {
+    if (!this.ctx) return;
+    this.sing(this.scaleNote(degree, -1), this.now, 0.5, 0.05, "o", this.fxBus, 0.03, 0.4);
+    this.hiss(this.now, 0.3, { freq: 380, q: 6, gain: 0.025, wet: 0.3 });
   }
 
   private thump(start: number, gain: number, bus: AudioNode) {

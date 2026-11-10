@@ -38,18 +38,18 @@ export type DialogueUI = {
   portrait?: string;
 };
 
-export type BattleOption = { id: "sing" | "recall" | "breathe" | "flee"; label: string; enabled: boolean };
-
 export type BattleUI = {
   name: string;
   guardian: boolean;
   health: number;
   maxHealth: number;
-  phase: "intro" | "menu" | "sing" | "defend" | "text" | "end";
+  /** "rest" between phrases, while the shadow speaks; "call" while its notes come. */
+  phase: "intro" | "rest" | "call" | "end";
   text: string;
   hint: string;
-  options: BattleOption[];
-  selected: number;
+  /** The text is a verse of the poem. */
+  verse: boolean;
+  canFlee: boolean;
 };
 
 export type RevealUI = {

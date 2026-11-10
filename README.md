@@ -167,10 +167,11 @@ escena: {
 - **Imágenes**: se generaron con ChatGPT a partir de la ilustración de cada página, en hojas de una fila sobre fondo transparente, y se cortaron en un WebP por elemento. Si falta una imagen, una persona se dibuja como silueta y un objeto no aparece.
 
 - **Controles:** flechas o WASD para caminar y Espacio para hablar o cantar. Esc pausa y M silencia. En celular hay un círculo para caminar, un botón ✦, y también se puede tocar adonde ir.
+- **Batallas:** son de pregunta y respuesta, con un pulso que se escucha. La sombra canta una frase de notas oscuras que bajan hasta tu luz, y se responde cada una con Espacio (o tocando la pantalla) justo cuando toca el anillo. Cada nota respondida vuelve como luz y le quita oscuridad a la sombra; la primera que se escapa en una frase te baja la luz. Una frase entera respondida te devuelve luz y hace recordar un verso ya rescatado, que pega más fuerte. La primera batalla es un ensayo guiado que no puede salir mal. Cada sombra canta a su manera según su nombre (Miedo se apura, Olvido borra sus notas, Ruido va a destiempo, Vacío deja silencios, Vergüenza llega de costado, Mañana hace esperar), y el guardián mezcla las de su página. De las sombras que andan sueltas se puede huir con H o con el botón. Las reglas y los tiempos están en `src/game/battle.ts`.
 - **Sonido:** todo se sintetiza en el navegador, sin archivos. Hay volumen general, música y efectos, y se guarda en el navegador junto con el progreso.
 - **Gráficos:** estilo pintado y realista. Cada nivel se pinta en el navegador a partir de su página: un piso según el lugar (tierra de campo, asfalto, adoquines, mármol, madera o losas) teñido con los colores de la pintura, paredes de papel tapiz en los interiores, paredes de roca con volumen y sombra, agua, niebla que se mueve y charcos cuando llueve. La luz del farol de la Voz y la de los faroles proyecta sombras detrás de las paredes y las rocas, y lo que ya recorriste queda apenas visible. La Voz camina de verdad: sus piernas se recortan de la pintura al cargar y dan pasos, mientras la capa se mece y el cuerpo sube y baja con cada paso.
 - **Imágenes:** todas se generaron con ChatGPT. Los retratos y la portada están en `public/juego/`; las texturas y las figuras del mundo (la Voz en tres poses, el ángel, el farol, la pluma, la roca y los pisos y paredes de cada `lugar`), en `public/juego/arte/`; los personajes y objetos de cada pintura, en `public/juego/escenas/`. Si alguna no carga, el juego dibuja una figura más simple. La imagen para compartir, `/juego/compartir.jpg`, se arma al compilar.
-- **Pruebas:** con `/juego?prueba=1`, la consola tiene `__laVoz` con atajos para juntar los versos, pelear o revelar la página.
+- **Pruebas:** con `/juego?prueba=1`, la consola tiene `__laVoz` con atajos para juntar los versos, pelear (`fight("Miedo")` elige la sombra), ver las notas de la batalla (`battle()`), responder (`press()`) o revelar la página.
 
 ```
 src/game/level.ts    Genera el mapa de un nivel a partir de su página
@@ -178,6 +179,7 @@ src/game/art.ts      Pinta el mundo del nivel a partir de su página: piso, pare
 src/game/painted.ts  Carga las figuras pintadas y los pisos de cada lugar; dibuja la Voz, el humo de las sombras y la estrella
 src/game/scene.ts    Carga los personajes y objetos de cada pintura y dibuja su humo, sus hilos y la corona
 src/game/engine.ts   Exploración, batallas, luces y revelación, en canvas
+src/game/battle.ts   Reglas de la batalla: cómo canta cada sombra, sus frases y los tiempos
 src/game/audio.ts    Coro, música de batalla y efectos con Web Audio
 src/game/sprites.ts  Figuras de repuesto, por si no cargan las pintadas
 src/game/Game.tsx    Pantallas, diálogos, controles táctiles y sonido
