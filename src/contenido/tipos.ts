@@ -75,6 +75,48 @@ export type Movimiento =
   /** Brilla cada tanto, como algo mojado. */
   | "brilla";
 
+/**
+ * Lo que hace un recuerdo cuando la Voz lo lleva encima. El juego explica cada
+ * don con sus palabras en `src/game/keepsakes.ts`.
+ */
+export type Don =
+  /** Los versos brillan a través de la oscuridad. */
+  | "destello"
+  /** La penumbra embosca la mitad de las veces. */
+  | "suerte"
+  /** Más margen para responder cada nota. */
+  | "pausa"
+  /** Los versos se levantan desde una casilla de distancia. */
+  | "iman"
+  /** La Voz camina más rápido. */
+  | "paso"
+  /** Las sombras la ven desde más cerca. */
+  | "sigilo"
+  /** La sombra que le saca luz pierde fuerza. */
+  | "espina"
+  /** Gana un cuarto más de voz. */
+  | "gloria"
+  /** El primer golpe de cada batalla no saca luz. */
+  | "aguante"
+  /** Cada verso rescatado devuelve una llama. */
+  | "brindis"
+  /** Ve más lejos en la oscuridad. */
+  | "mirada"
+  /** Una vez por página, si la luz se apaga, vuelve a encenderse ahí mismo. */
+  | "despertar"
+  /** Al cantar, un hilo de luz marca el verso más cercano. */
+  | "hilo"
+  /** Cada nota justa pega doble. */
+  | "reflejo"
+  /** Una llama más. */
+  | "llama"
+  /** El guardián del título empieza más débil. */
+  | "sello"
+  /** El canto llega más lejos y aturde el doble. */
+  | "mando"
+  /** Las frases de las sombras traen una nota menos. */
+  | "compas";
+
 /** Un personaje u objeto de la ilustración que aparece dentro del nivel. */
 export type ElementoEscena = {
   /** Imagen en /public/juego/escenas, sin la extensión. Sin imagen, es solo una luz. */
@@ -107,6 +149,12 @@ export type ElementoEscena = {
   copias?: number;
   /** Se levanta al pisarlo y queda guardado, como una llave. */
   levantar?: boolean;
+  /**
+   * Es el recuerdo de la página: al levantarlo queda para siempre en el baúl y,
+   * si la Voz lo lleva, le da este don. Uno solo por página, con `levantar`,
+   * `pasable` e imagen propia (su nombre no se puede repetir en otra página).
+   */
+  recuerdo?: Don;
   /** Lo que dice si es una persona, o lo que se ve al mirarlo. Vacío: no se puede mirar. */
   dice: string[];
   /** Lo que se dice en cambio si la Voz ya levantó el elemento con esa imagen. */

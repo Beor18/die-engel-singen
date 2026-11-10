@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -15,7 +16,8 @@ import {
 import { Adorno } from "@/experiencia/Adorno";
 import { AudioEngine, MODES, type AudioSettings, type Key } from "./audio";
 import { Engine } from "./engine";
-import { getProgress, getServerProgress, markDone, subscribeProgress, updateProgress } from "./progress";
+import { GIFTS, carry, keepsakesOf, leave, marksOf, rankOf, type Keepsake } from "./keepsakes";
+import { getProgress, getServerProgress, markDone, subscribeProgress, updateProgress, type Progress } from "./progress";
 import type { Dir, LevelSource, Speaker, UIState } from "./types";
 import "./game.css";
 
@@ -41,7 +43,7 @@ type Screen =
   | { kind: "level"; id: string; run: number }
   | { kind: "ending" };
 
-type Panel = null | "sound";
+type Panel = null | "sound" | "chest";
 
 const isCoarse = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
@@ -67,6 +69,7 @@ export function Game({ levels }: { levels: LevelSource[] }) {
   const [screen, setScreen] = useState<Screen>({ kind: "title" });
   const [panel, setPanel] = useState<Panel>(null);
   const [awake, setAwake] = useState(false);
+  const catalog = useMemo(() => keepsakesOf(levels), [levels]);
 
   const done = progress.done;
   const doneCount = levels.filter((l) => done.includes(l.id)).length;
@@ -135,6 +138,7 @@ export function Game({ levels }: { levels: LevelSource[] }) {
               : null
           }
           onSound={() => setPanel("sound")}
+          onChest={progress.voice > 0 || progress.keepsakes.length ? () => setPanel("chest") : null}
         />
       )}
 
@@ -151,7 +155,9 @@ export function Game({ levels }: { levels: LevelSource[] }) {
       {screen.kind === "choir" && (
         <Choir
           levels={levels}
-          done={done}
+          progress={progress}
+          catalog={catalog}
+          onChest={() => setPanel("chest")}
           isUnlocked={(i) => isUnlocked(i) || levels[i].id === wanted?.id}
           next={nextLevel}
           onPlay={(id) => play(id)}
@@ -165,7 +171,8 @@ export function Game({ levels }: { levels: LevelSource[] }) {
           key={`${screen.id}-${screen.run}`}
           level={levels.find((l) => l.id === screen.id) ?? levels[0]}
           total={levels.length}
-          maxLight={3 + Math.min(5, doneCount)}
+          catalog={catalog}
+          progress={progress}
           tutorial={doneCount === 0}
           audio={audio}
           muted={progress.audio.muted}
@@ -180,13 +187,15 @@ export function Game({ levels }: { levels: LevelSource[] }) {
           }}
           onEnding={() => setScreen({ kind: "ending" })}
           onChoir={() => setScreen({ kind: "choir" })}
-          soundOpen={panel === "sound"}
+          onChest={() => setPanel("chest")}
+          panelOpen={panel !== null}
         />
       )}
 
       {screen.kind === "ending" && <Ending count={doneCount} total={levels.length} onChoir={() => setScreen({ kind: "choir" })} />}
 
       {panel === "sound" && <SoundPanel settings={progress.audio} onChange={setAudio} onClose={() => setPanel(null)} />}
+      {panel === "chest" && <Chest catalog={catalog} progress={progress} onClose={() => setPanel(null)} />}
     </div>
   );
 }
@@ -197,10 +206,12 @@ function TitleScreen({
   primary,
   onChoir,
   onSound,
+  onChest,
 }: {
   primary: { label: string; onClick: () => void };
   onChoir: (() => void) | null;
   onSound: () => void;
+  onChest: (() => void) | null;
 }) {
   const startRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -233,6 +244,11 @@ function TitleScreen({
           <Link href="/" className="enlace-juego">
             Leer el libro
           </Link>
+          {onChest && (
+            <button type="button" className="enlace-juego" onClick={onChest}>
+              Tu baúl
+            </button>
+          )}
           <button type="button" className="enlace-juego" onClick={onSound}>
             Sonido
           </button>
@@ -299,22 +315,28 @@ function Prologue({ audio, onDone }: { audio: AudioEngine; onDone: () => void })
 
 function Choir({
   levels,
-  done,
+  progress,
+  catalog,
   isUnlocked,
   next,
   onPlay,
   onBack,
   onSound,
+  onChest,
 }: {
   levels: LevelSource[];
-  done: string[];
+  progress: Progress;
+  catalog: Keepsake[];
+  onChest: () => void;
   isUnlocked: (i: number) => boolean;
   next: LevelSource | null;
   onPlay: (id: string) => void;
   onBack: () => void;
   onSound: () => void;
 }) {
+  const done = progress.done;
   const count = levels.filter((l) => done.includes(l.id)).length;
+  const kept = catalog.filter((k) => progress.keepsakes.includes(k.id)).length;
   const lastDone = Math.max(-1, ...levels.map((l, i) => (done.includes(l.id) ? i : -1)));
   return (
     <section className="coro" aria-labelledby="titulo-coro">
@@ -336,6 +358,16 @@ function Choir({
           {count ? `Seguir con «${next.indexName}»` : `Empezar con «${next.indexName}»`}
         </button>
       )}
+      <div className="coro-voz">
+        <VoiceMeter voice={progress.voice} />
+        <button type="button" className="boton-juego coro-baul" onClick={onChest}>
+          Abrir tu baúl
+          <span className="coro-baul-cuenta">
+            {kept} de {catalog.length} recuerdos
+          </span>
+        </button>
+      </div>
+      <p className="coro-marcas-nota">Cada página guarda tres marcas: rescatarla, encontrar su recuerdo y terminarla sin que tu luz se apague.</p>
       <ol className="coro-paginas">
         {levels.map((l, i) => {
           const rescued = done.includes(l.id);
@@ -358,6 +390,7 @@ function Choir({
                 <span className="coro-estado">
                   {rescued ? "Rescatada" : open ? (fresh ? "Nueva" : "Para rescatar") : "Rescatá la anterior"}
                 </span>
+                <Marks marks={marksOf(l.id, progress, catalog)} />
               </button>
             </li>
           );
@@ -372,7 +405,8 @@ function Choir({
 function LevelScreen({
   level,
   total,
-  maxLight,
+  catalog,
+  progress,
   tutorial,
   audio,
   muted,
@@ -382,11 +416,13 @@ function LevelScreen({
   onNext,
   onEnding,
   onChoir,
-  soundOpen,
+  onChest,
+  panelOpen,
 }: {
   level: LevelSource;
   total: number;
-  maxLight: number;
+  catalog: Keepsake[];
+  progress: Progress;
   tutorial: boolean;
   audio: AudioEngine;
   muted: boolean;
@@ -396,7 +432,9 @@ function LevelScreen({
   onNext: (id: string) => void;
   onEnding: () => void;
   onChoir: () => void;
-  soundOpen: boolean;
+  onChest: () => void;
+  /** A panel is open over the level: the sound or the chest. */
+  panelOpen: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [touch] = useState(isCoarse);
@@ -405,7 +443,7 @@ function LevelScreen({
       new Engine({
         level,
         total,
-        maxLight,
+        catalog,
         audio,
         touch,
         tutorial,
@@ -426,8 +464,8 @@ function LevelScreen({
   }, [engine]);
 
   useEffect(() => {
-    engine.setPaused(paused || soundOpen);
-  }, [engine, paused, soundOpen]);
+    engine.setPaused(paused || panelOpen);
+  }, [engine, paused, panelOpen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -458,8 +496,8 @@ function LevelScreen({
         <canvas ref={canvasRef} aria-hidden="true" />
       </div>
 
-      {!ui.loading && !ui.error && !ui.reveal && !ui.battle && (
-        <Hud ui={ui} muted={muted} onPause={() => setPaused(true)} onToggleMute={onToggleMute} />
+      {!ui.loading && !ui.error && !ui.reveal && !ui.battle && !ui.found && (
+        <Hud ui={ui} muted={muted} onPause={() => setPaused(true)} onToggleMute={onToggleMute} onChest={onChest} />
       )}
 
       {ui.loading && (
@@ -494,10 +532,40 @@ function LevelScreen({
         </div>
       )}
 
-      {ui.toast && (
-        <p className="aviso-juego" role="status">
-          {ui.toast}
+      {(ui.toast || (ui.chase && !ui.dialogue && !ui.battle)) && (
+        <p className={`aviso-juego${ui.toast ? "" : " aviso-persecucion"}`} role="status">
+          {ui.toast ?? "Una sombra tiene tu verso. Alcanzala."}
         </p>
+      )}
+
+      {ui.banner && (
+        <div className="cartel-voz" role="status">
+          <p className="cartel-voz-titulo">{ui.banner.title}</p>
+          {ui.banner.text && <p className="cartel-voz-texto">{ui.banner.text}</p>}
+        </div>
+      )}
+
+      {ui.found && (
+        <div className="hallazgo" role="dialog" aria-labelledby="hallazgo-nombre" data-game-menu>
+          <div className="hallazgo-caja">
+            <p className="revelacion-sobre">Recuerdo nuevo, +{ui.found.voice} de voz</p>
+            <span className="hallazgo-imagen">
+              <Image src={ui.found.image} alt="" fill sizes="200px" />
+            </span>
+            <h2 id="hallazgo-nombre">{ui.found.name}</h2>
+            <p className="hallazgo-linea">{ui.found.line}</p>
+            <p className="hallazgo-don">
+              <span>Mientras lo lleves</span>
+              {ui.found.gift}
+            </p>
+            <p className="pausa-dato">
+              {ui.found.carried ? "Ya lo llevás con vos." : "Quedó en tu baúl: no llevás más por ahora. Lo cambiás desde Pausa."} Tenés {ui.found.count} de {ui.found.total}.
+            </p>
+            <button type="button" className="boton-juego boton-principal" autoFocus onClick={() => engine.pressA()}>
+              Guardarlo y seguir
+            </button>
+          </div>
+        </div>
       )}
 
       {ui.dialogue && <Dialogue ui={ui} onNext={() => engine.pressA()} touch={touch} />}
@@ -520,6 +588,25 @@ function LevelScreen({
             {ui.reveal.meaning.map((m) => (
               <p key={m}>{m}</p>
             ))}
+          </div>
+          <div className="cuenta">
+            <p className="cuenta-total">
+              +{ui.reveal.tally.total} de voz
+              {ui.reveal.tally.grewTo && <span className="cuenta-rango">Tu voz creció: {ui.reveal.tally.grewTo}</span>}
+            </p>
+            <VoiceMeter voice={progress.voice} compact />
+            <Marks marks={marksOf(level.id, progress, catalog)} labels />
+            <details className="cuenta-detalle">
+              <summary>Qué sumó en esta página</summary>
+              <ul>
+                {ui.reveal.tally.rows.map((r) => (
+                  <li key={r.label}>
+                    <span>{r.label}</span>
+                    <span>+{r.amount}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           </div>
           <div className="titulo-acciones">
             {ui.reveal.last ? (
@@ -553,15 +640,19 @@ function LevelScreen({
 
       {touch && !ui.loading && !ui.reveal && !ui.battle && !paused && <TouchControls engine={engine} />}
 
-      {paused && !soundOpen && (
+      {paused && !panelOpen && (
         <div className="pausa" role="dialog" aria-labelledby="pausa-titulo" data-game-menu>
           <div className="pausa-caja">
             <h2 id="pausa-titulo">Pausa</h2>
             <p className="pausa-dato">
               «{level.name}», {ui.verses} de {ui.totalVerses} versos.
             </p>
+            <VoiceMeter voice={progress.voice} />
             <button type="button" className="boton-juego boton-principal" autoFocus onClick={() => setPaused(false)}>
               Seguir jugando
+            </button>
+            <button type="button" className="boton-juego" onClick={onChest}>
+              Tu baúl
             </button>
             <button type="button" className="boton-juego" onClick={onSound}>
               Sonido
@@ -579,7 +670,19 @@ function LevelScreen({
   );
 }
 
-function Hud({ ui, muted, onPause, onToggleMute }: { ui: UIState; muted: boolean; onPause: () => void; onToggleMute: () => void }) {
+function Hud({
+  ui,
+  muted,
+  onPause,
+  onToggleMute,
+  onChest,
+}: {
+  ui: UIState;
+  muted: boolean;
+  onPause: () => void;
+  onToggleMute: () => void;
+  onChest: () => void;
+}) {
   return (
     <div className="hud">
       <button type="button" className="hud-boton" onClick={onPause} aria-label="Pausa">
@@ -601,6 +704,23 @@ function Hud({ ui, muted, onPause, onToggleMute }: { ui: UIState; muted: boolean
               <span key={i} className={i < ui.light ? "llama" : "llama apagada"} />
             ))}
           </span>
+          {ui.carried.length > 0 && (
+            <button type="button" className="hud-recuerdos" onClick={onChest} aria-label={`Llevás: ${ui.carried.map((k) => k.name).join(", ")}. Abrir tu baúl`}>
+              {ui.carried.map((k) => (
+                <span key={k.id} className="hud-recuerdo">
+                  <Image src={k.image} alt="" fill sizes="28px" />
+                </span>
+              ))}
+            </button>
+          )}
+        </span>
+        <span className="hud-voz" aria-label={`Tu voz: ${ui.voice.rank}`}>
+          <span className="hud-voz-barra" style={{ "--avance": ui.voice.span ? ui.voice.into / ui.voice.span : 1 } as CSSProperties} />
+          {ui.gain && (
+            <span key={ui.gain.id} className="hud-ganancia">
+              +{ui.gain.amount} de voz
+            </span>
+          )}
         </span>
       </div>
       <button type="button" className="hud-boton" onClick={onToggleMute} aria-label={muted ? "Activar sonido" : "Silenciar"} aria-pressed={muted}>
@@ -816,6 +936,154 @@ function Ending({ count, total, onChoir }: { count: number; total: number; onCho
       {note && <p className="revelacion-nota">{note}</p>}
       <p className="final-firma">Die Engel Singen. Poemas de Fernando López.</p>
     </section>
+  );
+}
+
+// ----- Voice, marks and chest ------------------------------------------------
+
+/** The rank of the voice and how far the next one is. `compact` says it in one line under the bar. */
+function VoiceMeter({ voice, compact = false }: { voice: number; compact?: boolean }) {
+  const rank = rankOf(voice);
+  if (compact) {
+    return (
+      <div className="voz">
+        <div className="voz-barra" style={{ "--avance": rank.span ? rank.into / rank.span : 1 } as CSSProperties} />
+        <p className="voz-falta">
+          {rank.name}. {rank.nextName ? `Faltan ${rank.span - rank.into} para ${rank.nextName}.` : "Es la voz más alta que hay."}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="voz">
+      <p className="voz-rango">
+        Tu voz: <strong>{rank.name}</strong>
+      </p>
+      <div className="voz-barra" style={{ "--avance": rank.span ? rank.into / rank.span : 1 } as CSSProperties} />
+      <p className="voz-falta">{rank.nextName ? `Faltan ${rank.span - rank.into} para ${rank.nextName}.` : "Es la voz más alta que hay."}</p>
+    </div>
+  );
+}
+
+/** The three marks of a page. */
+function Marks({ marks, labels = false }: { marks: ReturnType<typeof marksOf>; labels?: boolean }) {
+  const list = [
+    { on: marks.rescued, label: "Rescatada" },
+    ...(marks.keepsake === null ? [] : [{ on: marks.keepsake, label: "Recuerdo" }]),
+    { on: marks.clean, label: "Sin apagarte" },
+  ];
+  const got = list.filter((m) => m.on).length;
+  return (
+    <span className={labels ? "marcas marcas-nombres" : "marcas"} role="img" aria-label={`${got} de ${list.length} marcas: ${list.map((m) => `${m.label} ${m.on ? "sí" : "no"}`).join(", ")}`}>
+      {list.map((m) => (
+        <span key={m.label} className={m.on ? "marca" : "marca vacia"}>
+          {labels && m.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Chest({ catalog, progress, onClose }: { catalog: Keepsake[]; progress: Progress; onClose: () => void }) {
+  const owned = (k: Keepsake) => progress.keepsakes.includes(k.id);
+  const carried = (k: Keepsake) => progress.carrying.includes(k.id);
+  const [picked, setPicked] = useState<string | null>(() => (catalog.find(carried) ?? catalog.find(owned))?.id ?? null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeRef.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
+  const rank = rankOf(progress.voice);
+  const count = catalog.filter(owned).length;
+  const carrying = catalog.filter(carried).length;
+  const shown = catalog.find((k) => k.id === picked) ?? null;
+
+  return (
+    <div className="baul" role="dialog" aria-labelledby="baul-titulo" data-game-menu>
+      <header className="coro-cabecera">
+        <button ref={closeRef} type="button" className="enlace-juego" onClick={onClose}>
+          Cerrar
+        </button>
+        <span className="baul-cuenta">
+          {count} de {catalog.length} recuerdos
+        </span>
+      </header>
+      <h2 id="baul-titulo">Tu baúl</h2>
+      <Adorno className="juego-adorno" />
+      <VoiceMeter voice={progress.voice} />
+      <p className="baul-bajada">
+        Cada página esconde un recuerdo. Los que llevás con vos te dan su don.{" "}
+        {rank.slots === 1 ? "Por ahora podés llevar uno." : `Podés llevar ${rank.slots === 2 ? "dos" : "tres"}.`} Llevás {carrying}.
+      </p>
+
+      <div className="baul-ficha" aria-live="polite">
+        {!shown && <p className="baul-vacio">Todavía no encontraste ninguno. Buscá en cada página algo que brille en el piso.</p>}
+        {shown && owned(shown) && (
+          <>
+            <span className="baul-ficha-imagen">
+              <Image src={shown.image} alt="" fill sizes="160px" />
+            </span>
+            <div className="baul-ficha-texto">
+              <h3>{shown.name}</h3>
+              <p className="baul-linea">{shown.line}</p>
+              <p className="baul-don">{GIFTS[shown.gift]}</p>
+              {carried(shown) ? (
+                <button type="button" className="boton-juego" onClick={() => leave(shown.id)}>
+                  Dejarlo en el baúl
+                </button>
+              ) : (
+                <button type="button" className="boton-juego boton-principal" onClick={() => carry(shown.id)}>
+                  {carrying >= rank.slots ? "Llevarlo en lugar de otro" : "Llevarlo con vos"}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+        {shown && !owned(shown) && (
+          <>
+            <span className="baul-ficha-imagen baul-silueta">
+              <Image src={shown.image} alt="" fill sizes="160px" />
+            </span>
+            <div className="baul-ficha-texto">
+              <h3>Sin encontrar</h3>
+              <p className="baul-linea">
+                {shown.level ? `Está en la página ${shown.level.number}, «${shown.level.name}».` : "No está en ninguna página. Alguien se lo llevó corriendo."}
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+
+      <ul className="baul-grilla">
+        {catalog.map((k) => {
+          const has = owned(k);
+          return (
+            <li key={k.id}>
+              <button
+                type="button"
+                className={`baul-casilla${has ? "" : " falta"}${carried(k) ? " llevado" : ""}${picked === k.id ? " elegida" : ""}`}
+                aria-pressed={picked === k.id}
+                onClick={() => setPicked(k.id)}
+              >
+                <span className={has ? "baul-imagen" : "baul-imagen baul-silueta"}>
+                  <Image src={k.image} alt="" fill sizes="(max-width: 600px) 30vw, 120px" />
+                </span>
+                <span className="baul-nombre">{has ? k.name : k.level ? `Página ${k.level.number}` : "¿Quién lo tiene?"}</span>
+                {carried(k) && <span className="baul-etiqueta">Lo llevás</span>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

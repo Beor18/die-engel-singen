@@ -2,7 +2,7 @@ import { PAGINAS_FUENTE } from "./libro";
 import type { Pagina, PaginaFuente } from "./tipos";
 
 export { LIBRO } from "./libro";
-export type { Pagina, Particulas, Zona, Clima, Escena, ElementoEscena, Lugar, Movimiento } from "./tipos";
+export type { Pagina, Particulas, Zona, Clima, Escena, ElementoEscena, Lugar, Movimiento, Don } from "./tipos";
 
 const lineas = (texto: string) => texto.trim().split("\n").map((l) => l.trim());
 
@@ -31,7 +31,15 @@ function preparar(fuente: PaginaFuente): Pagina {
 function validar(paginas: Pagina[]) {
   const vistos = new Set<string>();
   const ordenes = new Set<number>();
+  const recuerdos = new Set<string>();
   for (const p of paginas) {
+    const suyos = (p.escena?.elementos ?? []).filter((e) => e.recuerdo);
+    if (suyos.length > 1) throw new Error(`La página "${p.id}" tiene más de un recuerdo.`);
+    for (const r of suyos) {
+      if (!r.imagen || !r.levantar || !r.pasable) throw new Error(`El recuerdo de "${p.id}" necesita "imagen", "levantar" y "pasable".`);
+      if (recuerdos.has(r.imagen)) throw new Error(`Hay dos recuerdos con la imagen "${r.imagen}".`);
+      recuerdos.add(r.imagen);
+    }
     if (vistos.has(p.id)) throw new Error(`Hay dos páginas con el id "${p.id}".`);
     if (ordenes.has(p.orden)) throw new Error(`Hay dos páginas con orden ${p.orden}.`);
     if (!/^[a-z0-9-]+$/.test(p.id)) {

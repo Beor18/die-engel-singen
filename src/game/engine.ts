@@ -39,9 +39,10 @@ import {
   type View,
 } from "./painted";
 import { buildSprites, LAMP_HEIGHT, type Sprites } from "./sprites";
-import type { BattleUI, Dir, LevelSource, Point, Speaker, UIState } from "./types";
+import type { BattleUI, Dir, FoundUI, LevelSource, Point, Speaker, TallyUI, UIState } from "./types";
 import { doubt, phrase, styleOf, tell, timing, travelBeats, wholeLines, type Style, type Timing } from "./battle";
-import { getProgress, updateProgress } from "./progress";
+import { getProgress, subscribeProgress, updateProgress } from "./progress";
+import { FEATHER, GIFTS, VOICE, keep, loadout, rankOf, type Gift, type Keepsake } from "./keepsakes";
 
 /**
  * The game engine for one level: exploration, battles and the final reveal.
@@ -64,7 +65,7 @@ const NAMES: Record<Speaker, string> = {
 };
 
 type Line = { speaker: Speaker; text: string; name?: string; veiled?: boolean; portrait?: string };
-type Mode = "loading" | "intro" | "explore" | "dialogue" | "battle" | "reveal" | "blackout" | "error";
+type Mode = "loading" | "intro" | "explore" | "dialogue" | "found" | "battle" | "reveal" | "blackout" | "error";
 
 type Actor = { x: number; y: number; fromX: number; fromY: number; t: number; moving: boolean; duration: number; dir: Dir };
 type Shadow = Actor & { name: string; home: Point; timer: number; stunned: number; alive: boolean; phase: number };
@@ -81,6 +82,10 @@ type Thing = Actor & {
   /** How long it has waited for the way to clear. */
   wait: number;
 };
+/** A small shadow that snatches a verse and runs: catching it gives the verse back. */
+type Thief = Actor & { verse: number; timer: number; stunned: number; age: number; phase: number };
+/** What a page gave the voice, by what it was earned for. */
+type Tally = { verses: number; notes: number; shadows: number; keepsake: number; thief: number; page: number; clean: number };
 /** Light motes going from someone toward the nearest missing verse. */
 type Trail = { points: Point[]; age: number };
 
@@ -133,6 +138,8 @@ type Battle = {
   flare: number;
   /** 1 when the light was hit, fading. */
   wound: number;
+  /** Whether the keepsake that takes the first blow already took it. */
+  shielded: boolean;
   /** Counts down after the light goes out, so the blow is seen before the blackout. */
   losing: number;
   hurt: number;
@@ -145,6 +152,8 @@ type Battle = {
 
 /** Seconds an answered note takes to fly from the light to the shadow. */
 const BOLT_TIME = 0.28;
+/** Seconds the verse thief dashes before it can be stopped with a song. */
+const THIEF_SPRINT = 1.6;
 
 type Drop = { x: number; y: number; vx: number; vy: number; size: number; rot: number; spin: number; color: string; phase: number };
 type Glow = {
@@ -187,7 +196,8 @@ const FLAME = { x: 2.7, y: 29 };
 export type EngineOptions = {
   level: LevelSource;
   total: number;
-  maxLight: number;
+  /** Every keepsake of the book: the ones the Voice carries give their gifts here. */
+  catalog: Keepsake[];
   audio: AudioEngine;
   touch: boolean;
   tutorial: boolean;
@@ -276,7 +286,34 @@ export class Engine {
   private things: Thing[] = [];
   private sceneArt: SceneArt = new Map();
   /** The images of what the Voice has picked up, like a key. */
+  /** The images of what the Voice has on it: what it picked up in this page and the keepsakes it carries. */
   private carried = new Set<string>();
+  private picked = new Set<string>();
+  private maxLight = 3;
+  private gifts = new Set<Gift>();
+  private rankIndex = 0;
+  private halo = false;
+  private carriedUI: UIState["carried"] = [];
+  private unsubscribe: (() => void) | null = null;
+  private tally: Tally = { verses: 0, notes: 0, shadows: 0, keepsake: 0, thief: 0, page: 0, clean: 0 };
+  /** Voice earned lately and not shown yet: one number in the HUD, not one per note. */
+  private gainSum = 0;
+  private gainTimer = 0;
+  private gainId = 0;
+  /** The rank reached in this page, if the voice grew. */
+  private grewTo: string | null = null;
+  private banner: UIState["banner"] = null;
+  private bannerTimer = 0;
+  /** Whether the light went out in this page. */
+  private wentOut = false;
+  /** Whether the keepsake that relights the Voice was already used in this page. */
+  private woke = false;
+  private found: FoundUI | null = null;
+  private foundAt = 0;
+  private afterFound: (() => void) | null = null;
+  private thief: Thief | null = null;
+  /** How many verses the Voice must hold for the thief to strike; 0 when it doesn't come. */
+  private thiefAt = 0;
   private trail: Trail | null = null;
   /** Someone the Voice is walking to, to talk once it gets there. */
   private pendingTalk: Thing | null = null;
@@ -320,7 +357,8 @@ export class Engine {
     this.o = options;
     this.rng = createRng(hash(options.level.id) ^ 0x9e3779b9);
     this.difficulty = options.level.number - 1;
-    this.light = options.maxLight;
+    this.refreshLoadout();
+    this.light = this.maxLight;
     this.ui = this.snapshot();
   }
 
@@ -347,6 +385,11 @@ export class Engine {
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.onBlur);
     document.addEventListener("visibilitychange", this.onVisibility);
+    // The chest can be opened in the middle of a page: what is carried changes right away.
+    this.unsubscribe = subscribeProgress(() => {
+      this.refreshLoadout();
+      this.emit();
+    });
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.frame);
     void this.load(++this.session);
@@ -360,6 +403,8 @@ export class Engine {
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onBlur);
     document.removeEventListener("visibilitychange", this.onVisibility);
+    this.unsubscribe?.();
+    this.unsubscribe = null;
     this.o.audio.setBattle(false);
     this.o.audio.setRain(false);
     this.canvasEl = null;
@@ -376,6 +421,7 @@ export class Engine {
     if (this.paused) return;
     if (this.mode === "intro") this.titleCardTimer = Math.min(this.titleCardTimer, 0.2);
     else if (this.mode === "dialogue") this.advanceDialogue();
+    else if (this.mode === "found") this.closeFound();
     else if (this.mode === "battle") this.battleA();
     else if (this.mode === "explore" && !this.player.moving) this.interact();
   }
@@ -461,6 +507,20 @@ export class Engine {
       }
     },
     reveal: () => this.startReveal(),
+    /** Makes the thief strike now, taking the last verse rescued. */
+    thief: () => {
+      const last = this.map.verses.filter((v) => this.collected.has(v.index)).pop();
+      if (last && !this.thief) this.startThief(last);
+      return this.thief ? { x: this.thief.x, y: this.thief.y } : null;
+    },
+    thiefAt: () => (this.thief ? { x: this.thief.x, y: this.thief.y, stunned: this.thief.stunned > 0 } : null),
+    /** Where this page's keepsake lies, if it is still there. */
+    keepsake: () => {
+      const th = this.things.find((x) => x.el.recuerdo && !x.picked);
+      return th ? { x: th.x, y: th.y, image: th.el.imagen ?? null } : null;
+    },
+    gifts: () => [...this.gifts],
+    loadout: () => ({ maxLight: this.maxLight, rank: this.rankIndex, carried: [...this.carried] }),
     art: () => {
       const half = (layer: HTMLCanvasElement) => {
         const c = canvas(layer.width / ART, layer.height / ART);
@@ -487,7 +547,7 @@ export class Engine {
       });
       return c.toDataURL();
     },
-    state: () => ({ mode: this.mode, player: { x: this.player.x, y: this.player.y }, light: this.light, verses: this.collected.size }),
+    state: () => ({ mode: this.mode, player: { x: this.player.x, y: this.player.y }, light: this.light, verses: this.collected.size, tally: { ...this.tally } }),
     /** The people and things of the painting in this level. */
     things: () => this.things.map((th) => ({ name: th.el.nombre, x: th.x, y: th.y, copy: th.prop.copy, image: th.el.imagen ?? null })),
     /** Sends the shadows away, to walk a level without battles. */
@@ -610,12 +670,20 @@ export class Engine {
         step: 0,
         fade: 1,
         phase: (i * 1.618) % 6.28,
-        picked: false,
+        // A keepsake already in the chest is not on the page any more.
+        picked: Boolean(elements[prop.index].recuerdo && getProgress().keepsakes.includes(elements[prop.index].imagen ?? "")),
         wait: 0,
       }));
-      this.carried.clear();
+      this.picked.clear();
+      this.refreshLoadout();
+      this.light = this.maxLight;
       this.trail = null;
       this.pendingTalk = null;
+      this.thief = null;
+      // The thief comes to most pages, never the first ones, and always the first time it can.
+      const verses = m.verses.length;
+      const comes = this.o.level.number >= 2 && !this.o.tutorial && verses >= 3 && (getProgress().thief === 0 || Math.random() < 0.6);
+      this.thiefAt = comes ? 2 + Math.floor(Math.random() * (verses - 2)) : 0;
 
       this.key = this.musicalKey();
       const audio = this.o.audio;
@@ -753,6 +821,23 @@ export class Engine {
     this.singCooldown = Math.max(0, this.singCooldown - dt);
     this.singPulse = Math.max(0, this.singPulse - dt * 1.3);
     this.bumpCooldown = Math.max(0, this.bumpCooldown - dt);
+    // What was earned and a new rank wait for the battle to end: there the HUD is hidden.
+    if (this.mode !== "battle" && this.mode !== "reveal" && this.mode !== "found") {
+      if (this.gainTimer > 0) {
+        this.gainTimer -= dt;
+        if (this.gainTimer <= 0) {
+          this.gainSum = 0;
+          this.emit();
+        }
+      }
+      if (this.bannerTimer > 0) {
+        this.bannerTimer -= dt;
+        if (this.bannerTimer <= 0) {
+          this.banner = null;
+          this.emit();
+        }
+      }
+    }
     if (this.toastTimer > 0) {
       this.toastTimer -= dt;
       if (this.toastTimer <= 0) {
@@ -777,7 +862,9 @@ export class Engine {
       case "explore":
         this.updatePlayer(dt);
         this.updateThings(dt);
-        this.updateShadows(dt);
+        this.updateThief(dt);
+        // Catching the thief opens a dialogue: the shadows wait for it.
+        if (this.mode === "explore") this.updateShadows(dt);
         this.updateLightning(dt);
         break;
       case "dialogue":
@@ -809,6 +896,175 @@ export class Engine {
     this.emit();
   }
 
+  // ----- Voice, rank and keepsakes ---------------------------------------------
+
+  /** Reads what the Voice carries and the rank of its voice: both can change in the middle of a page. */
+  private refreshLoadout() {
+    const l = loadout(getProgress(), this.o.catalog);
+    this.gifts = l.gifts;
+    this.maxLight = l.maxLight;
+    this.rankIndex = l.rank.index;
+    this.halo = l.rank.halo;
+    this.carriedUI = l.carried.map((k) => ({ id: k.id, name: k.name, image: k.image }));
+    this.carried = new Set([...this.picked, ...l.carried.map((k) => k.id)]);
+    if (this.light > this.maxLight) this.light = this.maxLight;
+  }
+
+  private stepTime() {
+    return this.gifts.has("paso") ? 0.155 : STEP_TIME;
+  }
+
+  /** Adds to the voice, for good: it is saved at once, so leaving a page loses nothing. */
+  private earn(what: keyof Tally, amount: number) {
+    const total = Math.round(amount * (this.gifts.has("gloria") ? 1.25 : 1));
+    if (total <= 0) return 0;
+    const before = rankOf(getProgress().voice);
+    this.tally[what] += total;
+    this.gainSum += total;
+    this.gainTimer = 2.2;
+    this.gainId++;
+    updateProgress((p) => ({ ...p, voice: p.voice + total }));
+    const after = rankOf(getProgress().voice);
+    if (after.index > before.index) {
+      this.grewTo = after.name;
+      this.banner = { title: `Tu voz creció: ${after.name}`, text: after.brings };
+      this.bannerTimer = 5;
+      // The new flame comes lit.
+      if (after.light > before.light && this.light > 0) this.light = Math.min(this.maxLight, this.light + 1);
+      this.o.audio.portal();
+      this.flash = Math.max(this.flash, this.o.reducedMotion ? 0.15 : 0.35);
+    }
+    this.emit();
+    return total;
+  }
+
+  /** A keepsake goes to the chest, and the game stops to show it. */
+  private findKeepsake(k: Keepsake, then?: () => void) {
+    const carried = keep(k.id);
+    const voice = this.earn("keepsake", VOICE.keepsake);
+    const chest = getProgress().keepsakes.length;
+    this.found = { image: k.image, name: k.name, line: k.line, gift: GIFTS[k.gift], carried, voice, count: chest, total: this.o.catalog.length };
+    this.foundAt = this.time;
+    this.afterFound = then ?? null;
+    this.mode = "found";
+    this.held = [];
+    this.path = [];
+    this.o.audio.reveal();
+    this.emit();
+  }
+
+  private closeFound() {
+    // A key still held from the dialogue must not put it away unseen.
+    if (this.time - this.foundAt < 0.8) return;
+    const then = this.afterFound;
+    this.found = null;
+    this.afterFound = null;
+    this.mode = "explore";
+    this.held = [];
+    this.o.audio.ui();
+    this.emit();
+    then?.();
+  }
+
+  // ----- The verse thief -------------------------------------------------------
+
+  /** A small shadow takes the verse just rescued and lands a few steps away, ready to run. */
+  private startThief(v: Verse) {
+    const p = this.player;
+    const d = distances(this.map.cells, p);
+    let spot: Point | null = null;
+    for (let y = p.y - 3; y <= p.y + 3; y++) {
+      for (let x = p.x - 3; x <= p.x + 3; x++) {
+        if (!inside(x, y) || this.blocksPlayer({ x, y })) continue;
+        const steps = d[at(x, y)];
+        if (steps < 2 || steps > 3) continue;
+        if (!spot || steps > d[at(spot.x, spot.y)]) spot = { x, y };
+      }
+    }
+    this.thiefAt = 0;
+    // Nowhere to run: it doesn't come.
+    if (!spot) return;
+    this.collected.delete(v.index);
+    this.o.audio.setVoices(1 + this.collected.size);
+    this.thief = { x: spot.x, y: spot.y, fromX: spot.x, fromY: spot.y, t: 1, moving: false, duration: 0.3, dir: "up", verse: v.index, timer: 0.5, stunned: 0, age: 0, phase: this.rng() * 6 };
+    this.path = [];
+    this.o.audio.miss();
+    this.o.audio.whisper(0, 0.09);
+    if (!this.o.reducedMotion) this.shake = 0.5;
+    this.say([
+      { speaker: "narrator", text: "Una sombra chiquita te arranca el verso de las manos y sale corriendo." },
+      { speaker: "voice", text: "¡Mi verso! Si le canto de cerca, se queda quieta. Tengo que alcanzarla." },
+    ]);
+  }
+
+  private updateThief(dt: number) {
+    const th = this.thief;
+    if (!th) return;
+    th.age += dt;
+    if (th.moving) {
+      th.t += dt / th.duration;
+      if (th.t >= 1) {
+        th.t = 1;
+        th.moving = false;
+      }
+    }
+    const p = this.player;
+    const pp = this.playerPos();
+    if (Math.hypot(lerp(th.fromX, th.x, th.t) - pp.x, lerp(th.fromY, th.y, th.t) - pp.y) < 0.75) {
+      this.catchThief();
+      return;
+    }
+    if (th.stunned > 0) {
+      th.stunned -= dt;
+      return;
+    }
+    if (th.moving) return;
+    th.timer -= dt;
+    if (th.timer > 0) return;
+    const d = distances(this.map.cells, p);
+    const here = d[at(th.x, th.y)];
+    const sprint = th.age < THIEF_SPRINT;
+    // Far from the Voice it waits, so the chase never leaves the page.
+    if (here < 0 || (!sprint && here > 7)) {
+      th.timer = 0.3;
+      return;
+    }
+    // It runs for the place farthest from the Voice that it can still reach first: that takes it out of dead ends.
+    const mine = distances(this.map.cells, th);
+    let goal: Point | null = null;
+    let far = here;
+    for (let c = 0; c < d.length; c++) {
+      if (mine[c] < 0 || d[c] < 0 || mine[c] >= d[c] || d[c] <= far) continue;
+      const q = { x: c % COLS, y: (c / COLS) | 0 };
+      if (this.blocksPlayer(q)) continue;
+      goal = q;
+      far = d[c];
+    }
+    const next = goal ? findPath(this.map.cells, th, goal, (x, y) => this.blocksPlayer({ x, y }) || (x === p.x && y === p.y))?.[0] : null;
+    // It bolts at first, faster than the Voice, and then tires little by little.
+    if (next) this.moveActor(th, next, sprint ? 0.14 : lerp(0.225, 0.38, clamp((th.age - 8) / 10)));
+    else th.timer = 0.3;
+  }
+
+  private catchThief() {
+    const th = this.thief!;
+    this.thief = null;
+    this.collected.add(th.verse);
+    this.path = [];
+    this.o.audio.verse();
+    this.o.audio.setVoices(1 + this.collected.size);
+    const first = !getProgress().keepsakes.includes(FEATHER.id);
+    updateProgress((p) => ({ ...p, thief: p.thief + 1 }));
+    this.earn("thief", VOICE.thief);
+    const after = () => {
+      if (this.collected.size === this.map.verses.length) this.openPortal();
+    };
+    this.say([{ speaker: "narrator", text: "La alcanzás. Suelta el verso y se deshace en humo." }], () => {
+      if (first) this.findKeepsake(FEATHER, after);
+      else after();
+    });
+  }
+
   // ----- Exploration ---------------------------------------------------------
 
   private playerPos() {
@@ -828,7 +1084,7 @@ export class Engine {
       }
     };
     const pos = this.playerPos();
-    mark(pos.x, pos.y, 1.6 + this.light * 0.55);
+    mark(pos.x, pos.y, 1.6 + this.light * 0.55 + (this.gifts.has("mirada") ? 1.6 : 0));
     for (const lamp of this.visitedLamps) mark(lamp.x, lamp.y, 3);
   }
 
@@ -951,19 +1207,24 @@ export class Engine {
   /** Talks to someone of the painting, or looks at something. People then point the way to a missing verse. */
   private examine(th: Thing) {
     const el = th.el;
+    // What can be picked up is picked up: the Voice steps on it.
+    if (el.levantar && !th.picked) {
+      this.path = [{ x: th.x, y: th.y }];
+      return;
+    }
     const lines = el.conObjeto && this.carried.has(el.conObjeto.imagen) ? el.conObjeto.dice : el.dice;
     const portrait = el.persona && el.imagen && this.sceneArt.has(el.imagen) ? `/juego/escenas/${el.imagen}.webp` : undefined;
     this.path = [];
     this.say(
       lines.map((text): Line => (el.persona ? { speaker: "figure", name: el.nombre, text, portrait } : { speaker: "narrator", text })),
       () => {
-        if (el.persona) this.pointTheWay(th);
+        if (el.persona && this.pointTheWay(th)) this.showToast("Te señala por dónde seguir.");
       },
     );
   }
 
-  /** Light motes from someone to the nearest verse still missing. */
-  private pointTheWay(th: Thing) {
+  /** Light motes from someone, or from the Voice itself, to the nearest verse still missing. */
+  private pointTheWay(from: Point | null) {
     const p = this.player;
     const d = distances(this.map.cells, p);
     let best: Verse | null = null;
@@ -971,11 +1232,11 @@ export class Engine {
       if (this.collected.has(v.index) || d[at(v.x, v.y)] < 0) continue;
       if (!best || d[at(v.x, v.y)] < d[at(best.x, best.y)]) best = v;
     }
-    if (!best) return;
+    if (!best) return false;
     const route = findPath(this.map.cells, p, best);
-    if (!route?.length) return;
-    this.trail = { points: [{ x: th.x, y: th.y }, { x: p.x, y: p.y }, ...route], age: 0 };
-    this.showToast("Te señala por dónde seguir.");
+    if (!route?.length) return false;
+    this.trail = { points: [...(from ? [{ x: from.x, y: from.y }] : []), { x: p.x, y: p.y }, ...route], age: 0 };
+    return true;
   }
 
   /** The motes of the trail, flowing toward the verse. Drawn over the dark, like the eyes of the shadows. */
@@ -1012,6 +1273,31 @@ export class Engine {
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  /** What shines through the dark: the verse the thief carries, and every missing verse for who carries the feather. */
+  private drawGlints(ctx: CanvasRenderingContext2D, t: number, alpha: number) {
+    const glint = (x: number, y: number, size: number, k: number) => {
+      const pulse = 0.55 + 0.45 * Math.sin(t * 3 + k);
+      drawStar(ctx, x, y, size * (0.8 + pulse * 0.4), `rgba(255,246,216,${alpha * (0.5 + pulse * 0.5)})`, "rgba(255,226,160,0.95)", 8 * this.dpr);
+    };
+    const th = this.thief;
+    if (th) {
+      const tx = lerp(th.fromX, th.x, th.t) * TILE + 8;
+      const ty = lerp(th.fromY, th.y, th.t) * TILE + 13;
+      glint(tx + 3, ty - 12, 5, th.phase);
+      // Its eyes, smaller than those of the shadows that roam.
+      ctx.fillStyle = `rgba(255,70,72,${0.95 * alpha * (th.stunned > 0 ? 0.4 : 1)})`;
+      for (const [ex, ey] of SMOKE_EYES) {
+        ctx.beginPath();
+        ctx.ellipse(tx + ex * 0.6, ty + ey * 0.6, 0.7, 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (!this.gifts.has("destello")) return;
+    for (const v of this.map.verses) {
+      if (!this.collected.has(v.index) && v.index !== th?.verse) glint(v.x * TILE + 8, v.y * TILE + 3, 4, v.index * 1.7);
+    }
   }
 
   /** What can be examined on that tile: someone to talk to, or something to look at. */
@@ -1072,7 +1358,7 @@ export class Engine {
     p.y = target.y;
     p.t = 0;
     p.moving = true;
-    p.duration = STEP_TIME;
+    p.duration = this.stepTime();
     this.o.audio.step(this.map.cells[at(target.x, target.y)] === GLOOM);
     return true;
   }
@@ -1083,13 +1369,23 @@ export class Engine {
     const found = this.things.find((th) => th.el.levantar && !th.picked && th.x === p.x && th.y === p.y);
     if (found) {
       found.picked = true;
-      if (found.el.imagen) this.carried.add(found.el.imagen);
+      const image = found.el.imagen;
+      if (image) {
+        this.picked.add(image);
+        this.carried.add(image);
+      }
       this.path = [];
+      const keepsake = found.el.recuerdo ? this.o.catalog.find((k) => k.id === image) : undefined;
+      if (keepsake) {
+        this.findKeepsake(keepsake);
+        return;
+      }
       this.o.audio.verse();
       this.say(found.el.dice.map((text) => ({ speaker: "narrator" as const, text })));
       return;
     }
-    const verse = m.verses.find((v) => v.x === p.x && v.y === p.y && !this.collected.has(v.index));
+    const pull = this.gifts.has("iman") ? 1 : 0;
+    const verse = m.verses.find((v) => cheb(v, p) <= pull && !this.collected.has(v.index));
     if (verse) {
       this.collect(verse);
       return;
@@ -1115,7 +1411,8 @@ export class Engine {
 
     this.stepsSinceEncounter++;
     if (m.cells[at(p.x, p.y)] === GLOOM && this.invulnerable <= 0 && this.stepsSinceEncounter >= 5) {
-      if (this.rng() < 0.08 + this.difficulty * 0.004) {
+      // No ambush while the thief runs: the chase is trouble enough.
+      if (!this.thief && this.rng() < (0.08 + this.difficulty * 0.004) * (this.gifts.has("suerte") ? 0.5 : 1)) {
         this.path = [];
         this.startBattle(null, false);
       }
@@ -1127,8 +1424,8 @@ export class Engine {
     const firstTime = !this.visitedLamps.has(lamp);
     this.visitedLamps.add(lamp);
     this.checkpoint = { x: p.x, y: p.y };
-    const healed = this.light < this.o.maxLight;
-    this.light = this.o.maxLight;
+    const healed = this.light < this.maxLight;
+    this.light = this.maxLight;
     if (healed || firstTime || spoken) this.o.audio.lamp();
     if (spoken) this.say([{ speaker: "narrator", text: "Te quedás un momento junto al farol. Tu luz vuelve, y si se apaga, vas a volver acá." }]);
     else if (firstTime) this.showToast("Un farol. Si tu luz se apaga, volvés acá.");
@@ -1142,10 +1439,13 @@ export class Engine {
     const total = this.map.verses.length;
     this.o.audio.verse();
     this.o.audio.setVoices(1 + this.collected.size);
+    if (this.gifts.has("brindis") && this.light < this.maxLight) this.light++;
+    this.earn("verses", VOICE.verse);
     this.say(
       [{ speaker: "verse", name: `Verso ${this.collected.size} de ${total}`, text: v.lines.join("\n") }],
       () => {
         if (this.collected.size === total) this.openPortal();
+        else if (this.thiefAt && this.collected.size >= this.thiefAt && !this.thief) this.startThief(v);
       },
     );
   }
@@ -1188,6 +1488,9 @@ export class Engine {
       lines.push({ speaker: "angel", text: meaning });
       lines.push({ speaker: "angel", text: "Ahora sí puedo cantar. Subí hasta el título." });
     }
+    // The angel knows when the page still hides its keepsake.
+    if (this.things.some((th) => th.el.recuerdo && !th.picked))
+      lines.push({ speaker: "angel", text: "Y esta página guarda algo más: brilla en el piso, y no es un verso." });
     this.say(lines);
   }
 
@@ -1197,9 +1500,14 @@ export class Engine {
     this.singPulse = 1;
     this.o.audio.hum(pick(this.rng, [0, 2, 4, 7]));
     const p = this.player;
+    const reach = this.gifts.has("mando") ? 6 : 3;
+    const stun = this.gifts.has("mando") ? 4.4 : 2.2;
+    if (this.gifts.has("hilo")) this.pointTheWay(null);
+    // The thief only hears a song sung close, once its first dash is over.
+    if (this.thief && this.thief.age >= THIEF_SPRINT && manhattan(this.thief, p) <= reach) this.thief.stunned = Math.max(this.thief.stunned, stun * 0.7);
     for (const s of this.shadows) {
-      if (!s.alive || manhattan(s, p) > 3) continue;
-      s.stunned = 2.2;
+      if (!s.alive || manhattan(s, p) > reach) continue;
+      s.stunned = stun;
       const away = (Object.keys(DELTA) as Dir[])
         .map((d) => ({ x: s.x + DELTA[d].x, y: s.y + DELTA[d].y }))
         .filter((q) => this.shadowCanEnter(q, s) && manhattan(q, p) > manhattan(s, p));
@@ -1275,7 +1583,7 @@ export class Engine {
       if (!s.moving) {
         s.timer -= dt;
         if (s.timer <= 0) {
-          const sight = 5 + Math.min(3, this.difficulty * 0.25);
+          const sight = 5 + Math.min(3, this.difficulty * 0.25) - (this.gifts.has("sigilo") ? 2.5 : 0);
           const chase = !safe && d <= sight && this.invulnerable <= 0;
           let next: Point | null = null;
           if (chase) {
@@ -1384,7 +1692,12 @@ export class Engine {
     const styles = guardian ? this.guardianStyles() : [{ style: styleOf(name), name }];
     const lesson = !guardian && !getProgress().rehearsed;
     // The rehearsal leaves a little darkness for one real phrase after the practice.
-    const hp = guardian ? 10 + Math.floor(this.difficulty / 3) : lesson ? 7 : 4 + Math.floor(this.difficulty / 5);
+    const hp = guardian ? 10 + Math.floor(this.difficulty / 3) - (this.gifts.has("sello") ? 3 : 0) : lesson ? 7 : 4 + Math.floor(this.difficulty / 5);
+    const pace = timing(this.difficulty, guardian);
+    if (this.gifts.has("pausa")) {
+      pace.good *= 1.35;
+      pace.perfect *= 1.35;
+    }
     const origin = shadow ? { x: lerp(shadow.fromX, shadow.x, shadow.t), y: lerp(shadow.fromY, shadow.y, shadow.t) } : this.playerPos();
     const count = guardian ? 120 : 80;
     this.battle = {
@@ -1401,7 +1714,7 @@ export class Engine {
       shadow,
       clock: 0,
       intro: 0,
-      timing: timing(this.difficulty, guardian),
+      timing: pace,
       nextBeat: 0,
       beats: 0,
       pulse: 0,
@@ -1414,6 +1727,7 @@ export class Engine {
       bolts: [],
       flare: 0,
       wound: 0,
+      shielded: false,
       losing: 0,
       hurt: 0,
       dying: 0,
@@ -1482,7 +1796,8 @@ export class Engine {
     const b = this.battle!;
     const entry = b.styles[b.phrases % b.styles.length];
     const style: Style = b.lesson ? "steady" : entry.style;
-    const count = b.lesson === 1 ? 1 : b.lesson === 2 ? 3 : b.guardian ? 6 : this.difficulty >= 8 ? 5 : 4;
+    const usual = b.guardian ? 6 : this.difficulty >= 8 ? 5 : 4;
+    const count = b.lesson === 1 ? 1 : b.lesson === 2 ? 3 : usual - (this.gifts.has("compas") ? 1 : 0);
     const beat = b.timing.beat;
     // The first note reaches the light on a beat, and leaves the shadow after now.
     let first = b.nextBeat;
@@ -1531,7 +1846,8 @@ export class Engine {
     n.result = result;
     n.doneAt = b.clock;
     this.o.audio.hum(n.degree, result);
-    b.bolts.push({ t: 0, amount: 1, big: false });
+    b.bolts.push({ t: 0, amount: result === "perfect" && this.gifts.has("reflejo") ? 2 : 1, big: false });
+    if (!b.lesson) this.earn("notes", result === "perfect" ? VOICE.perfect : VOICE.good);
     this.popup(result === "perfect" ? "¡Justo!" : "Bien", result === "perfect" ? "#fff1c2" : "#f7f7f5", result === "perfect");
   }
 
@@ -1545,12 +1861,27 @@ export class Engine {
     b.misses++;
     // The first miss of a phrase dims the light, and then every third one (every second against a guardian).
     if (b.misses % (b.guardian ? 2 : 3) !== 1) return;
+    if (this.gifts.has("aguante") && !b.shielded) {
+      b.shielded = true;
+      this.o.audio.block();
+      this.popup("Aguantás el golpe", "#fff1c2", false, true);
+      return;
+    }
     this.light = Math.max(0, this.light - 1);
     b.wound = 1;
     this.o.audio.hit();
     if (!this.o.reducedMotion) this.shake = 0.7;
     this.popup("−1 de luz", "#ff5a5f", false, true);
-    if (this.light <= 0) b.losing = 0.9;
+    // A thorn: the shadow that hurts the Voice gets hurt.
+    if (this.gifts.has("espina")) b.bolts.push({ t: 0, amount: 1, big: false });
+    if (this.light <= 0) {
+      if (this.gifts.has("despertar") && !this.woke) {
+        this.woke = true;
+        this.light = 1;
+        this.o.audio.lamp();
+        this.popup("Tu luz se vuelve a encender", "#fff1c2", false, true);
+      } else b.losing = 0.9;
+    }
     this.emit();
   }
 
@@ -1574,7 +1905,7 @@ export class Engine {
     }
     // A whole phrase answered: the Voice remembers a verse of the page, and it hits harder.
     b.flare = 1;
-    if (this.light < this.o.maxLight) {
+    if (this.light < this.maxLight) {
       this.light++;
       this.popup("+1 de luz", "#fff1c2", false, true);
     }
@@ -1610,8 +1941,9 @@ export class Engine {
       b.lesson = 0;
       updateProgress((p) => ({ ...p, rehearsed: true }));
     }
-    const grew = !b.guardian && this.light < this.o.maxLight;
+    const grew = !b.guardian && this.light < this.maxLight;
     if (grew) this.light++;
+    this.earn("shadows", b.guardian ? VOICE.guardian : VOICE.shadow);
     b.text = b.guardian ? "La sombra se rompe en mil pedazos de luz." : `${b.name} se deshace en luz.${grew ? " Tu luz crece." : ""}`;
     b.hint = "";
     b.verse = false;
@@ -1619,6 +1951,7 @@ export class Engine {
   }
 
   private lose() {
+    this.wentOut = true;
     this.battle = null;
     this.o.audio.setBattle(false);
     this.o.audio.defeat();
@@ -1715,7 +2048,7 @@ export class Engine {
     p.y = p.fromY = this.checkpoint.y;
     p.t = 1;
     p.moving = false;
-    this.light = this.o.maxLight;
+    this.light = this.maxLight;
     for (const s of this.shadows) {
       if (s.alive && cheb(s, p) <= 6) {
         s.x = s.fromX = s.home.x;
@@ -1732,6 +2065,14 @@ export class Engine {
   // ----- Reveal --------------------------------------------------------------
 
   private startReveal() {
+    const id = this.o.level.id;
+    this.earn("page", getProgress().done.includes(id) ? VOICE.replay : VOICE.page);
+    if (!this.wentOut) {
+      this.earn("clean", VOICE.clean);
+      updateProgress((p) => (p.clean.includes(id) ? p : { ...p, clean: [...p.clean, id] }));
+    }
+    this.gainSum = 0;
+    this.banner = null;
     this.mode = "reveal";
     this.reveal = { t: 0, done: false };
     this.o.audio.setRain(false);
@@ -1989,6 +2330,7 @@ export class Engine {
         }
       }
       this.drawTrail(ctx);
+      this.drawGlints(ctx, t, actorsAlpha);
     }
 
     this.renderWeather(ctx, reveal);
@@ -2150,7 +2492,7 @@ export class Engine {
       });
     }
     for (const v of m.verses) {
-      if (this.collected.has(v.index) || !onScreen(v)) continue;
+      if (this.collected.has(v.index) || v.index === this.thief?.verse || !onScreen(v)) continue;
       const bob = Math.sin(t * 2.2 + v.index) * 1.5;
       const x = v.x * TILE + 8;
       const y = v.y * TILE + 13;
@@ -2198,6 +2540,29 @@ export class Engine {
         },
       });
     }
+    const thief = this.thief;
+    if (thief) {
+      const ty = lerp(thief.fromY, thief.y, thief.t);
+      const sx = lerp(thief.fromX, thief.x, thief.t) * TILE + 8;
+      const sy = ty * TILE + 13;
+      const still = thief.stunned > 0;
+      items.push({
+        y: ty,
+        draw: () => {
+          shadowAt(sx, sy + 2, 4.5, 1.6, 0.9);
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.scale(0.6, 0.6);
+          ctx.globalAlpha *= still ? 0.55 : 1;
+          drawSmoke(ctx, 0, 0, t * 1.8, thief.phase, still ? 0.3 : 1);
+          ctx.restore();
+          // The verse it took, held high.
+          const bob = Math.sin(t * 9 + thief.phase) * (still ? 0.3 : 1.2);
+          if (P?.feather) stand(ctx, P.feather, sx + 3, sy - 7 + bob, 10, { tilt: 0.5 + Math.sin(t * 7) * 0.15 });
+          else ctx.drawImage(this.sprites.feather, sx - 1, sy - 17 + bob);
+        },
+      });
+    }
     const faced = this.mode === "explore" ? this.thingAt({ x: this.player.x + DELTA[this.player.dir].x, y: this.player.y + DELTA[this.player.dir].y }) : undefined;
     for (const th of this.things) {
       if (th.picked || th.fade <= 0 || !th.el.imagen) continue;
@@ -2214,7 +2579,7 @@ export class Engine {
     const view: View = p.dir === "down" ? "front" : p.dir === "up" ? "back" : "side";
     const parts = P?.voice?.[view];
     const flip = p.dir === "right";
-    const pose = parts && voicePose(parts, view, (this.walkClock * Math.PI) / STEP_TIME, this.walkBlend, t);
+    const pose = parts && voicePose(parts, view, (this.walkClock * Math.PI) / this.stepTime(), this.walkBlend, t);
     if (parts && pose) {
       const k = VOICE_TALL / parts.body.height;
       this.voiceShift = { x: pose.sway * k * (flip ? -1 : 1), y: pose.drop * k };
@@ -2227,8 +2592,21 @@ export class Engine {
         if (parts && pose) drawVoice(ctx, parts, x, y, VOICE_TALL, flip, pose);
         else {
           const frames = this.sprites.voice[p.dir];
-          const bob = p.moving ? Math.abs(Math.sin((this.walkClock * Math.PI) / STEP_TIME)) * 1.3 : 0;
+          const bob = p.moving ? Math.abs(Math.sin((this.walkClock * Math.PI) / this.stepTime())) * 1.3 : 0;
           ctx.drawImage(frames[p.moving ? 1 + (Math.floor(this.walkClock / 0.12) % 2) : 0], x - 8, y - 23 - bob);
+        }
+        // The highest rank of the voice wears a halo.
+        if (this.halo) {
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.strokeStyle = `rgba(255,226,150,${0.75 + Math.sin(t * 2) * 0.15})`;
+          ctx.lineWidth = 0.7;
+          ctx.shadowColor = "rgba(255,214,130,0.9)";
+          ctx.shadowBlur = 6 * this.dpr;
+          ctx.beginPath();
+          ctx.ellipse(x + this.voiceShift.x, y - VOICE_TALL - 1.5 + this.voiceShift.y + Math.sin(t * 1.6) * 0.4, 3.4, 1.1, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
         }
       },
     });
@@ -2271,6 +2649,8 @@ export class Engine {
       dy = -Math.abs(Math.sin((t / pace) * Math.PI)) * (mode === "corre" ? 1.8 : 0.8);
       tilt = mode === "corre" ? Math.sin((t / pace) * Math.PI) * 0.04 : 0;
     } else if (el.persona && mode !== "quieto") squash = 1 + Math.sin(t * 1.7 + ph) * 0.012;
+    // A keepsake floats a little over the floor, like a verse: it is there to be taken.
+    if (el.recuerdo) dy = -1.6 + Math.sin(t * 2.2 + ph) * 1.1;
 
     if (img) {
       ctx.save();
@@ -2390,11 +2770,13 @@ export class Engine {
       const pos = this.playerPos();
       const lantern = this.lanternPos();
       const flicker = 1 + Math.sin(t * 7.3) * 0.03 + Math.sin(t * 13.1) * 0.02;
-      const strength = 0.45 + (0.55 * this.light) / this.o.maxLight;
+      const strength = 0.45 + (0.55 * this.light) / this.maxLight;
+      // The light reaches farther as the voice grows, and with the keepsake that sees far.
+      const reach = this.rankIndex * 0.12 + (this.gifts.has("mirada") ? 1.4 : 0);
       out.push({
         x: pos.x * TILE + 8,
         y: pos.y * TILE + 9,
-        r: (3 + this.light * 0.8 + this.singPulse * 2.6) * flicker,
+        r: (3 + this.light * 0.8 + reach + this.singPulse * 2.6) * flicker,
         a: 1,
         c: WARM,
         shadow: true,
@@ -2445,6 +2827,12 @@ export class Engine {
         const b = this.thingBox(th);
         const f = Math.min(1, th.fade) * (0.85 + Math.sin(t * 1.3 + th.phase) * 0.15);
         out.push({ x: b.cx, y: b.base - 6, r: 2.1, a: 0.6 * f, c: [0.82, 0.86, 1], shadow: false, glow: 0.16 * f, gx: b.cx, gy: b.base - b.h * 0.55, gr: 12 });
+      }
+      if (th.el.recuerdo && !th.picked) {
+        // A keepsake shines on the floor, warmer than a verse: it can be found in the dark.
+        const b = this.thingBox(th);
+        const pulse = 0.8 + Math.sin(t * 2.6 + th.phase) * 0.2;
+        out.push({ x: b.cx, y: b.base - 3, r: 1.7 * pulse, a: 0.9, c: [1, 0.86, 0.55], shadow: false, glow: 0.4 * pulse, gx: b.cx, gy: b.base - b.h * 0.5, gr: 9 });
       }
       const L = th.el.luz;
       if (!L || th.picked || th.fade <= 0) continue;
@@ -2811,7 +3199,7 @@ export class Engine {
     // Your light, below: the one place where everything happens.
     const ly = portrait ? h * 0.62 : h * 0.68;
     const R = clamp(Math.min(w, h) * 0.07, 26 * this.dpr, 44 * this.dpr);
-    const strength = 0.5 + 0.5 * (this.light / this.o.maxLight);
+    const strength = 0.5 + 0.5 * (this.light / this.maxLight);
     const beat = b.pulse * b.pulse;
     const glowR = R * 2.8 * strength * (1 + beat * 0.08) * (1 + b.flare * 0.6);
     const lg = ctx.createRadialGradient(cx, ly, 0, cx, ly, glowR);
@@ -2978,6 +3366,26 @@ export class Engine {
     for (const l of this.listeners) l();
   }
 
+  private voiceUI(): UIState["voice"] {
+    const rank = rankOf(getProgress().voice);
+    return { rank: rank.name, index: rank.index, into: rank.into, span: rank.span, next: rank.nextName };
+  }
+
+  /** What this page gave the voice, for the end of the page. */
+  private tallyUI(): TallyUI {
+    const t = this.tally;
+    const rows = [
+      { label: "Versos rescatados", amount: t.verses },
+      { label: "Notas respondidas", amount: t.notes },
+      { label: "Sombras vencidas", amount: t.shadows },
+      { label: "Recuerdos encontrados", amount: t.keepsake },
+      { label: "Ladrona atrapada", amount: t.thief },
+      { label: "Página rescatada", amount: t.page },
+      { label: "Sin que tu luz se apague", amount: t.clean },
+    ].filter((r) => r.amount > 0);
+    return { rows, total: rows.reduce((sum, r) => sum + r.amount, 0), grewTo: this.grewTo };
+  }
+
   private snapshot(): UIState {
     const lvl = this.o.level;
     const ready = this.mode !== "loading" && this.mode !== "error";
@@ -2990,7 +3398,7 @@ export class Engine {
       title: lvl.name,
       number: lvl.number,
       light: this.light,
-      maxLight: this.o.maxLight,
+      maxLight: this.maxLight,
       verses: this.collected.size,
       totalVerses: ready ? this.map.verses.length : 0,
       portalOpen: this.portalOpen,
@@ -3024,8 +3432,14 @@ export class Engine {
           : null,
       reveal:
         this.reveal?.done && this.mode === "reveal"
-          ? { title: lvl.name, meaning: lvl.meaning, route: lvl.route, last: lvl.number === this.o.total }
+          ? { title: lvl.name, meaning: lvl.meaning, route: lvl.route, last: lvl.number === this.o.total, tally: this.tallyUI() }
           : null,
+      voice: this.voiceUI(),
+      gain: this.gainSum > 0 && this.mode !== "battle" && this.mode !== "reveal" && this.mode !== "found" ? { id: this.gainId, amount: this.gainSum } : null,
+      banner: this.mode === "explore" || this.mode === "dialogue" ? this.banner : null,
+      carried: this.carriedUI,
+      found: this.mode === "found" ? this.found : null,
+      chase: Boolean(this.thief),
       paused: this.paused,
       blackout: this.mode === "blackout",
     };

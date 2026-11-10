@@ -52,11 +52,45 @@ export type BattleUI = {
   canFlee: boolean;
 };
 
+/** What a page gave the voice, row by row. */
+export type TallyUI = {
+  rows: { label: string; amount: number }[];
+  total: number;
+  /** The rank reached in this page, if the voice grew. */
+  grewTo: string | null;
+};
+
 export type RevealUI = {
   title: string;
   meaning: string[];
   route: string;
   last: boolean;
+  tally: TallyUI;
+};
+
+/** A keepsake just found, shown until the player goes on. */
+export type FoundUI = {
+  image: string;
+  name: string;
+  line: string;
+  /** What it does while it is carried. */
+  gift: string;
+  /** Whether there was room to carry it right away. */
+  carried: boolean;
+  /** The voice it gave. */
+  voice: number;
+  /** How many keepsakes the chest holds now, out of how many there are. */
+  count: number;
+  total: number;
+};
+
+export type VoiceUI = {
+  rank: string;
+  index: number;
+  /** Voice earned inside this rank and how much the rank spans; `span` is 0 at the last one. */
+  into: number;
+  span: number;
+  next: string | null;
 };
 
 export type UIState = {
@@ -76,4 +110,14 @@ export type UIState = {
   reveal: RevealUI | null;
   paused: boolean;
   blackout: boolean;
+  voice: VoiceUI;
+  /** Voice just earned: `id` changes with each gain, so the number can pop again. */
+  gain: { id: number; amount: number } | null;
+  /** News that doesn't stop the game, like a new rank. */
+  banner: { title: string; text: string } | null;
+  /** The keepsakes the Voice carries. */
+  carried: { id: string; name: string; image: string }[];
+  found: FoundUI | null;
+  /** The thief is running with a verse. */
+  chase: boolean;
 };

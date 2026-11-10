@@ -166,12 +166,28 @@ escena: {
 - **Otros campos**: `ancho` en casillas, `pasable`, `espejado`, `luz` con `color`, `alcance` y `altura`, `copias` para desparramar decoración, `levantar` para algo que se guarda al pisarlo, y `conObjeto` para lo que se dice si ya se levantó otra cosa (la llave y la puerta de PRISIÓN).
 - **Imágenes**: se generaron con ChatGPT a partir de la ilustración de cada página, en hojas de una fila sobre fondo transparente, y se cortaron en un WebP por elemento. Si falta una imagen, una persona se dibuja como silueta y un objeto no aparece.
 
+### Recuerdos, baúl y voz
+
+Cada página esconde un **recuerdo**: un objeto chico de su escena marcado con `recuerdo` y el nombre de su don. Al pisarlo queda para siempre en el **baúl**, y mientras la Voz lo lleva encima le da ese don.
+
+```ts
+{ imagen: "moneda", nombre: "Moneda", x: 0.86, y: 0.54, alto: 0.4, pasable: true, levantar: true, mueve: "brilla", recuerdo: "suerte", dice: ["Una moneda gastada al pie del árbol. La guardás."] },
+```
+
+- **Uno por página**, con `levantar`, `pasable` e imagen propia: el nombre de la imagen lo identifica en el baúl, así que no se repite en otra página. El sitio no compila si falta algo de esto.
+- **Dones**: `destello`, `suerte`, `pausa`, `iman`, `paso`, `sigilo`, `espina`, `gloria`, `aguante`, `brindis`, `mirada`, `despertar`, `hilo`, `reflejo`, `llama`, `sello`, `mando` y `compas`. Qué hace cada uno está en `src/contenido/tipos.ts`; lo que lee quien juega, en `src/game/keepsakes.ts`.
+- **Llevar**: se lleva un recuerdo a la vez, dos desde el rango Canto y tres desde Coral. Se cambian en el baúl, que se abre desde el título, el coro o la pausa.
+- **Reacciones**: `conObjeto` también vale para los recuerdos que se llevan desde otra página (el Rey de papel le habla distinto a quien lleva la corona).
+- **La voz** es la experiencia: suma con cada verso, cada nota respondida, cada sombra vencida, cada recuerdo y cada página, y un extra si la luz no se apaga nunca. Al subir de rango (Susurro, Murmullo, Voz clara, Canto, Himno, Coral, Voz de ángel) gana llamas y lugar para llevar más recuerdos. Los valores y los rangos están en `src/game/keepsakes.ts`.
+- **Tres marcas por página**, a la vista en el coro: rescatada, recuerdo encontrado y terminada sin que la luz se apague.
+- **La ladrona**: en la mayoría de las páginas, una sombra chiquita roba un verso recién rescatado y sale corriendo. Hay que alcanzarla; cantarle de cerca la deja quieta. La primera vez que se la atrapa suelta la pluma de ángel, el único recuerdo que no está en ninguna página.
+
 - **Controles:** flechas o WASD para caminar y Espacio para hablar o cantar. Esc pausa y M silencia. En celular hay un círculo para caminar, un botón ✦, y también se puede tocar adonde ir.
 - **Batallas:** son de pregunta y respuesta, con un pulso que se escucha. La sombra canta una frase de notas oscuras que bajan hasta tu luz, y se responde cada una con Espacio (o tocando la pantalla) justo cuando toca el anillo. Cada nota respondida vuelve como luz y le quita oscuridad a la sombra; la primera que se escapa en una frase te baja la luz. Una frase entera respondida te devuelve luz y hace recordar un verso ya rescatado, que pega más fuerte. La primera batalla es un ensayo guiado que no puede salir mal. Cada sombra canta a su manera según su nombre (Miedo se apura, Olvido borra sus notas, Ruido va a destiempo, Vacío deja silencios, Vergüenza llega de costado, Mañana hace esperar), y el guardián mezcla las de su página. De las sombras que andan sueltas se puede huir con H o con el botón. Las reglas y los tiempos están en `src/game/battle.ts`.
 - **Sonido:** todo se sintetiza en el navegador, sin archivos. Hay volumen general, música y efectos, y se guarda en el navegador junto con el progreso.
 - **Gráficos:** estilo pintado y realista. Cada nivel se pinta en el navegador a partir de su página: un piso según el lugar (tierra de campo, asfalto, adoquines, mármol, madera o losas) teñido con los colores de la pintura, paredes de papel tapiz en los interiores, paredes de roca con volumen y sombra, agua, niebla que se mueve y charcos cuando llueve. La luz del farol de la Voz y la de los faroles proyecta sombras detrás de las paredes y las rocas, y lo que ya recorriste queda apenas visible. La Voz camina de verdad: sus piernas se recortan de la pintura al cargar y dan pasos, mientras la capa se mece y el cuerpo sube y baja con cada paso.
 - **Imágenes:** todas se generaron con ChatGPT. Los retratos y la portada están en `public/juego/`; las texturas y las figuras del mundo (la Voz en tres poses, el ángel, el farol, la pluma, la roca y los pisos y paredes de cada `lugar`), en `public/juego/arte/`; los personajes y objetos de cada pintura, en `public/juego/escenas/`. Si alguna no carga, el juego dibuja una figura más simple. La imagen para compartir, `/juego/compartir.jpg`, se arma al compilar.
-- **Pruebas:** con `/juego?prueba=1`, la consola tiene `__laVoz` con atajos para juntar los versos, pelear (`fight("Miedo")` elige la sombra), ver las notas de la batalla (`battle()`), responder (`press()`), revelar la página, caminar hasta una casilla (`walkTo(x, y)`), ver dónde faltan versos (`verses()`) o alejar las sombras (`calm()`), que sirve para filmar.
+- **Pruebas:** con `/juego?prueba=1`, la consola tiene `__laVoz` con atajos para juntar los versos, pelear (`fight("Miedo")` elige la sombra), ver las notas de la batalla (`battle()`), responder (`press()`), revelar la página, caminar hasta una casilla (`walkTo(x, y)`), ver dónde faltan versos (`verses()`), dónde está el recuerdo (`keepsake()`), hacer aparecer a la ladrona (`thief()`) o alejar las sombras (`calm()`), que sirve para filmar.
 
 ```
 src/game/level.ts    Genera el mapa de un nivel a partir de su página
@@ -180,9 +196,11 @@ src/game/painted.ts  Carga las figuras pintadas y los pisos de cada lugar; dibuj
 src/game/scene.ts    Carga los personajes y objetos de cada pintura y dibuja su humo, sus hilos y la corona
 src/game/engine.ts   Exploración, batallas, luces y revelación, en canvas
 src/game/battle.ts   Reglas de la batalla: cómo canta cada sombra, sus frases y los tiempos
+src/game/keepsakes.ts Recuerdos, dones, rangos de la voz y lo que suma cada cosa
+src/game/progress.ts Lo que se guarda en el navegador: páginas, recuerdos, voz y sonido
 src/game/audio.ts    Coro, música de batalla y efectos con Web Audio
 src/game/sprites.ts  Figuras de repuesto, por si no cargan las pintadas
-src/game/Game.tsx    Pantallas, diálogos, controles táctiles y sonido
+src/game/Game.tsx    Pantallas, diálogos, baúl, controles táctiles y sonido
 ```
 
 El código del juego está en inglés; los textos que se ven, en castellano.
