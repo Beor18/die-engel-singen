@@ -1175,4 +1175,105 @@ pero alguien más decide si podés usarla.
       ],
     },
   },
+  {
+    id: "entre-dos-tierras",
+    orden: 16,
+    tipo: "poema",
+    titulo: "ENTRE DOS TIERRAS",
+    imagen: {
+      src: "/libro/entre-dos-tierras.png",
+      alt: "Bajo un cielo de tormenta, un abismo parte la tierra en dos. A la izquierda, un castillo con estandartes rojos y una mesa servida con mantel rojo, velas encendidas, uvas, pan, una copa y una corona de oro. A la derecha, otro castillo con estandartes azules y, arriba de una escalera de piedra, un trono rojo vacío. Entre los dos bordes cae una cascada envuelta en niebla.",
+    },
+    texto: `
+Te ofrecieron
+una silla más alta
+y una mesa mejor servida.
+
+Ahora hablás de principios
+con la boca llena.
+
+Pusiste un pie de cada lado
+para no elegir bando.
+
+Entre dos tierras estás
+`,
+    significado: {
+      texto: `
+«Entre dos tierras»: cuando la ambición te lleva
+a ocupar ambos bandos sin comprometerte con ninguno.
+`,
+      enLaImagen: true,
+    },
+    escena: {
+      lugar: "campo",
+      elementos: [
+        {
+          imagen: "trono",
+          nombre: "Trono",
+          x: 0.9,
+          y: 0.6,
+          alto: 2.7,
+          ancho: 2,
+          dice: ["Una silla más alta, arriba de la escalera. Desde ahí se ven las dos tierras, y ninguna es tuya."],
+          conObjeto: { imagen: "corona", dice: ["Te sentás con la corona puesta. Los dos bandos te aplauden. Ninguno te cree."] },
+        },
+        {
+          imagen: "mesa-servida",
+          nombre: "Mesa",
+          x: 0.17,
+          y: 0.7,
+          alto: 2.2,
+          ancho: 4,
+          mueve: "llama",
+          luz: { color: "#ffc070", alcance: 3, altura: 0.8 },
+          dice: ["La mesa mejor servida que viste. Acá todos hablan de principios con la boca llena."],
+        },
+        {
+          imagen: "corona",
+          nombre: "Corona",
+          x: 0.29,
+          y: 0.665,
+          alto: 0.5,
+          pasable: true,
+          levantar: true,
+          mueve: "brilla",
+          dice: ["Una corona entre el pan y las uvas. La guardás. Nadie te la puso: la agarraste vos."],
+        },
+        {
+          imagen: "estandarte-rojo",
+          nombre: "Estandarte rojo",
+          x: 0.17,
+          y: 0.53,
+          alto: 2.6,
+          mueve: "viento",
+          dice: ["Un estandarte rojo con laureles. Te saluda como si fueras de acá."],
+        },
+        {
+          imagen: "estandarte-azul",
+          nombre: "Estandarte azul",
+          x: 0.77,
+          y: 0.55,
+          alto: 2.6,
+          mueve: "viento",
+          dice: ["Un estandarte azul con una balanza. También te saluda como si fueras de acá."],
+        },
+      ],
+    },
+    tono: "#78a9c4",
+    clima: {
+      relampagos: true,
+      zonas: [
+        { tipo: "nube", x: 0.38, y: 0.07, rx: 0.3, ry: 0.055, fuerza: 0.35, velocidad: 0.3 },
+        { tipo: "nube", x: 0.9, y: 0.3, rx: 0.08, ry: 0.1, fuerza: 0.3, velocidad: 0.28 },
+        { tipo: "luz", x: 0.068, y: 0.565, rx: 0.05, ry: 0.03, fuerza: 0.22, velocidad: 2.4, color: "#ffc070" },
+        { tipo: "luz", x: 0.9, y: 0.58, rx: 0.06, ry: 0.06, fuerza: 0.12, velocidad: 0.6, color: "#ff3a3a" },
+        { tipo: "centelleo", x: 0.12, y: 0.5, rx: 0.1, ry: 0.035, fuerza: 0.55, velocidad: 0.9 },
+        { tipo: "centelleo", x: 0.73, y: 0.55, rx: 0.07, ry: 0.025, fuerza: 0.5, velocidad: 0.8 },
+        { tipo: "viento", x: 0.17, y: 0.525, rx: 0.03, ry: 0.03, fuerza: 0.5, velocidad: 1.2 },
+        { tipo: "viento", x: 0.775, y: 0.53, rx: 0.035, ry: 0.04, fuerza: 0.5, velocidad: 1.1 },
+        { tipo: "agua", x: 0.5, y: 0.635, rx: 0.025, ry: 0.035, fuerza: 0.5, velocidad: 0.9 },
+        { tipo: "niebla", x: 0.51, y: 0.72, rx: 0.08, ry: 0.07, fuerza: 0.5, velocidad: 0.4 },
+      ],
+    },
+  },
 ];
