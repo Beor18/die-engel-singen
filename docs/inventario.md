@@ -22,6 +22,7 @@ Cada página trae una imagen de 941 x 1672 px, extraída sin recomprimir a `publ
 | 15 | `dosis.png` | DOSIS | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 | 16 | `prision.png` | PRISIÓN | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 | 17 | `entre-dos-tierras.png` | ENTRE DOS TIERRAS | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
+| 18 | `tanzen.png` | TANZEN | En la imagen | En la imagen, no se dibuja encima. Agregada después: no está en el PDF |
 
 ## Medidas tomadas del PDF
 
@@ -41,9 +42,9 @@ Estas medidas salen de los comandos de dibujo del propio PDF y se usan tal cual 
 
 Por pedido del autor, todos los adornos van del rojo de la estrella de la portada, `#98121A`, con trazo de 1,2 pt como en la portada. En el PDF son blancos, con trazo de 0,65 pt.
 
-Los adornos integrados en las imágenes de Platz Eins y Guten Appetit, y las líneas de Pills Bajo Control, se recolorearon píxel a píxel. Esas tres imágenes llevan `-rojo` en el nombre y el resto de cada imagen quedó idéntico al original. Los adornos de Prohibido, Morgen, El rey de papel, Spiegel, Dosis y Prisión ya venían rojos, pero más brillantes: se llevaron al mismo tono. El de Prisión tiene dos líneas a cada lado y se respetó así. El de Entre dos tierras es una flor de lis con volutas, y se llevó al mismo tono.
+Los adornos integrados en las imágenes de Platz Eins y Guten Appetit, y las líneas de Pills Bajo Control, se recolorearon píxel a píxel. Esas tres imágenes llevan `-rojo` en el nombre y el resto de cada imagen quedó idéntico al original. Los adornos de Prohibido, Morgen, El rey de papel, Spiegel, Dosis y Prisión ya venían rojos, pero más brillantes: se llevaron al mismo tono. El de Prisión tiene dos líneas a cada lado y se respetó así. El de Entre dos tierras es una flor de lis con volutas, y se llevó al mismo tono. El de Tanzen venía más oscuro y se subió al mismo tono, sin tocar el vestido rojo que tiene detrás.
 
-Entre dos tierras llegó en 992 x 1586, más ancha que 9:16. Para no recortar los costados (el lector llena el marco 9:16), se llevó a 941 de ancho y se completó hasta 1672 con cielo arriba (64 px) y suelo oscuro abajo (104 px), sin tocar nada de la pintura ni del texto.
+Entre dos tierras llegó en 992 x 1586, más ancha que 9:16. Para no recortar los costados (el lector llena el marco 9:16), se llevó a 941 de ancho y se completó hasta 1672 con cielo arriba (64 px) y suelo oscuro abajo (104 px), sin tocar nada de la pintura ni del texto. Tanzen llegó igual, en 992 x 1586, pero la pareja llega hasta el borde de abajo: los 168 px que faltaban se sumaron arriba, sobre el techo oscuro.
 
 ## Particularidades del original
 

@@ -1276,4 +1276,87 @@ a ocupar ambos bandos sin comprometerte con ninguno.
       ],
     },
   },
+  {
+    id: "tanzen",
+    orden: 17,
+    tipo: "poema",
+    titulo: "TANZEN",
+    imagen: {
+      src: "/libro/tanzen.png",
+      alt: "Un salón de baile en penumbra, de noche. En primer plano, una pareja baila abrazada, frente con frente y con los ojos cerrados: él de traje oscuro, ella con un vestido de encaje rojo oscuro y una rosa roja en el pelo. Alrededor, otras parejas bailan en la sombra. A la izquierda, un cortinado de terciopelo rojo y arañas con velas encendidas; a la derecha, ventanales altos con luz azul de luna.",
+    },
+    texto: `
+Nos balanceamos,
+entregados y apasionados.
+
+Ella me acerca.
+Beso suavemente su rostro
+y la música se confunde
+con su respiración.
+
+Sus labios rozan mi oído.
+
+Nunca imaginé
+que bailar pudiera sentirse así.
+`,
+    significado: {
+      texto: `
+«Tanzen» significa «bailar»: cuando dos cuerpos encuentran su propio ritmo.
+`,
+      enLaImagen: true,
+    },
+    escena: {
+      lugar: "salon",
+      elementos: [
+        {
+          imagen: "pareja-baile",
+          nombre: "Pareja",
+          x: 0.45,
+          y: 0.72,
+          alto: 2.2,
+          ancho: 2,
+          mueve: "baila",
+          dice: ["Bailan tan juntos que no te ven. La música se confunde con su respiración."],
+        },
+        { imagen: "bailarines", nombre: "Bailarines", x: 0.06, y: 0.74, alto: 2.1, mueve: "baila", copias: 2, dice: [] },
+        { imagen: "bailarines", nombre: "Bailarines", x: 0.9, y: 0.75, alto: 2.1, mueve: "baila", espejado: true, dice: [] },
+        {
+          imagen: "arana",
+          nombre: "Araña",
+          x: 0.06,
+          y: 0.53,
+          alto: 2,
+          mueve: "llama",
+          luz: { color: "#ffc070", alcance: 3, altura: 0.7 },
+          dice: ["Cinco velas encendidas. La cera cae despacio, al ritmo de la música."],
+        },
+        { imagen: "arana", nombre: "Araña", x: 0.96, y: 0.655, alto: 2, mueve: "llama", espejado: true, luz: { color: "#ffc070", alcance: 3, altura: 0.7 }, dice: [] },
+        {
+          imagen: "ventanal",
+          nombre: "Ventanal",
+          x: 0.92,
+          y: 0.5,
+          alto: 3.2,
+          ancho: 2,
+          luz: { color: "#7d9cff", alcance: 3.2, altura: 0.6 },
+          dice: ["Afuera es de noche y hace frío. Acá adentro nadie se da cuenta."],
+        },
+        { imagen: "telon", nombre: "Cortinado", x: 0.05, y: 0.4, alto: 3.6, dice: ["Terciopelo rojo, pesado. Del otro lado no llega ningún ruido."] },
+      ],
+    },
+    tono: "#d14a5c",
+    clima: {
+      particulas: [{ tipo: "polen", cantidad: 0.35 }],
+      zonas: [
+        { tipo: "luz", x: 0.06, y: 0.525, rx: 0.06, ry: 0.035, fuerza: 0.22, velocidad: 2.6, color: "#ffc070" },
+        { tipo: "luz", x: 0.08, y: 0.665, rx: 0.05, ry: 0.025, fuerza: 0.2, velocidad: 2.2, color: "#ffc070" },
+        { tipo: "luz", x: 0.96, y: 0.655, rx: 0.05, ry: 0.025, fuerza: 0.2, velocidad: 2.4, color: "#ffc070" },
+        { tipo: "luz", x: 0.93, y: 0.48, rx: 0.08, ry: 0.16, fuerza: 0.1, velocidad: 0.4, color: "#6f95ff" },
+        { tipo: "centelleo", x: 0.06, y: 0.525, rx: 0.06, ry: 0.035, fuerza: 0.5, velocidad: 1.1 },
+        { tipo: "centelleo", x: 0.96, y: 0.655, rx: 0.05, ry: 0.02, fuerza: 0.5, velocidad: 1 },
+        { tipo: "viento", x: 0.04, y: 0.39, rx: 0.045, ry: 0.09, fuerza: 0.4, velocidad: 0.5 },
+        { tipo: "agua", x: 0.79, y: 0.865, rx: 0.035, ry: 0.025, fuerza: 0.5, velocidad: 0.6 },
+      ],
+    },
+  },
 ];
