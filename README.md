@@ -175,7 +175,7 @@ Cada página esconde un **recuerdo**: un objeto chico de su escena marcado con `
 ```
 
 - **Uno por página**, con `levantar`, `pasable` e imagen propia: el nombre de la imagen lo identifica en el baúl, así que no se repite en otra página. El sitio no compila si falta algo de esto.
-- **Dones**: `destello`, `suerte`, `pausa`, `iman`, `paso`, `sigilo`, `espina`, `gloria`, `aguante`, `brindis`, `mirada`, `despertar`, `hilo`, `reflejo`, `llama`, `sello`, `mando`, `compas` y `despacio`. Qué hace cada uno está en `src/contenido/tipos.ts`; lo que lee quien juega, en `src/game/keepsakes.ts`.
+- **Dones**: `destello`, `suerte`, `pausa`, `iman`, `paso`, `sigilo`, `espina`, `gloria`, `aguante`, `brindis`, `mirada`, `despertar`, `hilo`, `reflejo`, `llama`, `sello`, `mando`, `compas`, `despacio` y `frente`. Qué hace cada uno está en `src/contenido/tipos.ts`; lo que lee quien juega, en `src/game/keepsakes.ts`.
 - **Llevar**: se lleva un recuerdo a la vez, dos desde el rango Canto y tres desde Coral. Se cambian en el baúl, que se abre desde el título, el coro o la pausa.
 - **Reacciones**: `conObjeto` también vale para los recuerdos que se llevan desde otra página (el Rey de papel le habla distinto a quien lleva la corona).
 - **La voz** es la experiencia: suma con cada verso, cada nota respondida, cada sombra vencida, cada recuerdo y cada página, y un extra si la luz no se apaga nunca. Al subir de rango (Susurro, Murmullo, Voz clara, Canto, Himno, Coral, Voz de ángel) gana llamas y lugar para llevar más recuerdos. Los valores y los rangos están en `src/game/keepsakes.ts`.

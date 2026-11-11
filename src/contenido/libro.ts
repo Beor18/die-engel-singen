@@ -1454,4 +1454,86 @@ acompañarse, incluso sin saber hacia dónde las lleva el camino.
       ],
     },
   },
+  {
+    id: "stille",
+    orden: 19,
+    tipo: "poema",
+    titulo: "STILLE",
+    imagen: {
+      src: "/libro/stille.png",
+      alt: "Un cuarto en penumbra, de noche. Un hombre y una mujer se miran de cerca a los ojos: él de pelo oscuro y barba corta, con camisa clara y chaleco oscuro; ella de pelo oscuro recogido con una cinta roja, con un chal rojo bordado. Entre los dos, sobre una mesa con libros, arde una vela. Detrás, una ventana con la lluvia corriendo por el vidrio.",
+    },
+    texto: `
+No quiero un silencio
+que esconda lo que sentimos.
+
+Prefiero una verdad incómoda
+a un juego sin sentido.
+
+Podemos ser diferentes,
+dejarnos de indirectas
+y volver a empezar.
+
+Pero mirándonos a los ojos.
+
+Porque amar también es decir
+lo que hace falta, de frente.
+`,
+    significado: {
+      texto: `
+«Stille» significa «silencio»: a veces, todo comienza
+cuando nos animamos a ser directos.
+`,
+      enLaImagen: true,
+    },
+    escena: {
+      lugar: "cuarto",
+      elementos: [
+        {
+          imagen: "pareja-stille",
+          nombre: "La pareja",
+          persona: true,
+          x: 0.5,
+          y: 0.82,
+          alto: 2.3,
+          ancho: 2,
+          dice: ["Estuvimos callados mucho tiempo. Hoy nos lo decimos todo, mirándonos a los ojos.", "Una verdad incómoda duele menos que un silencio largo."],
+          conObjeto: { imagen: "carta", dice: ["Esa carta era para no tener que decirlo. Quedátela: ya nos lo dijimos de frente."] },
+        },
+        {
+          imagen: "mesa-libros",
+          nombre: "Vela",
+          x: 0.3,
+          y: 0.68,
+          alto: 1.7,
+          mueve: "llama",
+          luz: { color: "#ffc070", alcance: 3.4, altura: 0.78 },
+          dice: ["Una vela encendida sobre los libros. Alcanza para verse la cara."],
+        },
+        {
+          imagen: "ventana-lluvia",
+          nombre: "Ventana",
+          x: 0.66,
+          y: 0.5,
+          alto: 3.1,
+          ancho: 2,
+          luz: { color: "#5c8dff", alcance: 3.4, altura: 0.55 },
+          dice: ["Llueve contra el vidrio. Acá adentro, por fin, se escucha todo."],
+        },
+        { imagen: "carta", nombre: "Carta", x: 0.14, y: 0.76, alto: 0.6, pasable: true, levantar: true, mueve: "brilla", recuerdo: "frente", dice: ["Una carta cerrada, caída al pie de la mesa. Adentro está todo lo que no se animaban a decirse. Ya no hace falta: la guardás."] },
+      ],
+    },
+    tono: "#7f9be8",
+    clima: {
+      particulas: [{ tipo: "polen", cantidad: 0.2 }],
+      zonas: [
+        { tipo: "luz", x: 0.431, y: 0.652, rx: 0.035, ry: 0.022, fuerza: 0.24, velocidad: 2.4, color: "#ffc070" },
+        { tipo: "centelleo", x: 0.431, y: 0.655, rx: 0.03, ry: 0.02, fuerza: 0.5, velocidad: 1 },
+        { tipo: "luz", x: 0.59, y: 0.56, rx: 0.09, ry: 0.13, fuerza: 0.1, velocidad: 0.4, color: "#5c8dff" },
+        { tipo: "agua", x: 0.59, y: 0.56, rx: 0.085, ry: 0.125, fuerza: 0.45, velocidad: 0.6 },
+        { tipo: "centelleo", x: 0.59, y: 0.54, rx: 0.075, ry: 0.1, fuerza: 0.4, velocidad: 0.9 },
+        { tipo: "agua", x: 0.955, y: 0.4, rx: 0.04, ry: 0.07, fuerza: 0.4, velocidad: 0.6 },
+      ],
+    },
+  },
 ];

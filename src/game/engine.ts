@@ -1725,7 +1725,8 @@ export class Engine {
       restUntil: 0,
       endAt: 0,
       lesson: lesson ? 1 : 0,
-      bolts: [],
+      // Said to its face: the Voice speaks first, and the hit lands as the shadow starts to whisper.
+      bolts: this.gifts.has("frente") && !lesson ? [{ t: -0.5, amount: 1, big: false }] : [],
       flare: 0,
       wound: 0,
       shielded: false,

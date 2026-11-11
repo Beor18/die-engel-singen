@@ -117,7 +117,9 @@ export type Don =
   /** Las frases de las sombras traen una nota menos. */
   | "compas"
   /** Las notas de las sombras llegan más despacio. */
-  | "despacio";
+  | "despacio"
+  /** Cada batalla empieza con un golpe de la Voz. */
+  | "frente";
 
 /** Un personaje u objeto de la ilustración que aparece dentro del nivel. */
 export type ElementoEscena = {

@@ -34,6 +34,7 @@ export const GIFTS: Record<Gift, string> = {
   mando: "Tu canto llega más lejos y aturde el doble.",
   compas: "Las sombras cantan una nota menos por frase.",
   despacio: "Las notas de las sombras llegan más despacio.",
+  frente: "Hablás primero: cada batalla empieza con un golpe tuyo.",
 };
 
 export type Keepsake = {
