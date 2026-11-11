@@ -47,6 +47,27 @@ type Panel = null | "sound" | "chest";
 
 const isCoarse = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
+const onFullscreenChange = (listener: () => void) => {
+  document.addEventListener("fullscreenchange", listener);
+  return () => document.removeEventListener("fullscreenchange", listener);
+};
+const never = () => () => {};
+
+/**
+ * Full screen, for phones: lying on its side, a phone gives the game the height
+ * the browser's bars were taking. Not every browser allows it (iPhones don't),
+ * so `offered` says whether there is anything to offer.
+ */
+function useFullscreen() {
+  const active = useSyncExternalStore(onFullscreenChange, () => Boolean(document.fullscreenElement), () => false);
+  const offered = useSyncExternalStore(never, () => Boolean(document.fullscreenEnabled) && isCoarse(), () => false);
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+  };
+  return { offered, active, toggle };
+}
+
 async function share(text: string, path: string) {
   const url = new URL(path, window.location.origin).toString();
   try {
@@ -214,6 +235,7 @@ function TitleScreen({
   onChest: (() => void) | null;
 }) {
   const startRef = useRef<HTMLButtonElement>(null);
+  const fullscreen = useFullscreen();
   useEffect(() => {
     if (!isCoarse()) startRef.current?.focus({ preventScroll: true });
   }, []);
@@ -252,6 +274,11 @@ function TitleScreen({
           <button type="button" className="enlace-juego" onClick={onSound}>
             Sonido
           </button>
+          {fullscreen.offered && (
+            <button type="button" className="enlace-juego" onClick={fullscreen.toggle}>
+              {fullscreen.active ? "Salir de pantalla completa" : "Pantalla completa"}
+            </button>
+          )}
         </div>
       </div>
     </section>
@@ -454,6 +481,7 @@ function LevelScreen({
   const ui = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
   const [paused, setPaused] = useState(false);
   const [note, setNote] = useState("");
+  const fullscreen = useFullscreen();
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -642,7 +670,7 @@ function LevelScreen({
 
       {paused && !panelOpen && (
         <div className="pausa" role="dialog" aria-labelledby="pausa-titulo" data-game-menu>
-          <div className="pausa-caja">
+          <div className="pausa-caja pausa-menu">
             <h2 id="pausa-titulo">Pausa</h2>
             <p className="pausa-dato">
               «{level.name}», {ui.verses} de {ui.totalVerses} versos.
@@ -657,6 +685,11 @@ function LevelScreen({
             <button type="button" className="boton-juego" onClick={onSound}>
               Sonido
             </button>
+            {fullscreen.offered && (
+              <button type="button" className="boton-juego" onClick={fullscreen.toggle}>
+                {fullscreen.active ? "Salir de pantalla completa" : "Pantalla completa"}
+              </button>
+            )}
             <button type="button" className="boton-juego" onClick={onChoir}>
               Volver al coro
             </button>
@@ -868,6 +901,9 @@ function TouchControls({ engine }: { engine: Engine }) {
     setDir(null);
     engine.setPad(null);
   };
+
+  // The controls go away for a battle or a pause: a direction still held must not stay pressed.
+  useEffect(() => () => engine.setPad(null), [engine]);
 
   return (
     <div className="tactil">

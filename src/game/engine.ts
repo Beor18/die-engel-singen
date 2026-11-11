@@ -2177,7 +2177,8 @@ export class Engine {
     el.height = this.ch;
     const tileCss = clamp(Math.min(rect.width, rect.height) / 10, 34, 64);
     this.scale = Math.max(2, Math.round((tileCss * this.dpr) / TILE));
-    this.bottomInset = this.o.touch ? Math.min(170, rect.height * 0.22) * this.dpr : 0;
+    // Upright, the touch controls take a strip along the bottom; on its side they sit in the corners, clear of the Voice.
+    this.bottomInset = this.o.touch && rect.height >= rect.width ? Math.min(170, rect.height * 0.22) * this.dpr : 0;
     if (this.mode !== "loading") this.initWeather();
   }
 
@@ -3122,8 +3123,10 @@ export class Engine {
     }
 
     const portrait = h > w;
+    // A phone on its side: the words go to the sides, and the shadow and the light share the whole height.
+    const low = !portrait && h < 520 * this.dpr;
     const cx = w / 2;
-    const cy = portrait ? h * 0.3 : h * 0.4;
+    const cy = portrait ? h * 0.3 : low ? h * 0.36 : h * 0.4;
     const size = Math.min(w, h) * (portrait ? 0.3 : 0.24) * (b.guardian ? 1.2 : 1);
     const tone = rgb(this.o.level.tone);
 
@@ -3198,7 +3201,7 @@ export class Engine {
     }
 
     // Your light, below: the one place where everything happens.
-    const ly = portrait ? h * 0.62 : h * 0.68;
+    const ly = portrait ? h * 0.62 : low ? h * 0.74 : h * 0.68;
     const R = clamp(Math.min(w, h) * 0.07, 26 * this.dpr, 44 * this.dpr);
     const strength = 0.5 + 0.5 * (this.light / this.maxLight);
     const beat = b.pulse * b.pulse;

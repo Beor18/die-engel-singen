@@ -168,7 +168,8 @@
 
 .titulo-pie {
   display: flex;
-  gap: 24px;
+  flex-wrap: wrap;
+  gap: 0 24px;
   justify-content: center;
   margin-top: 8px;
 }
@@ -252,7 +253,7 @@
   position: absolute;
   inset: 0;
   overflow-y: auto;
-  padding: max(8px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   text-align: center;
   -webkit-user-select: text;
   user-select: text;
@@ -425,7 +426,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: max(6px, env(safe-area-inset-top)) 8px 6px;
+  padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left));
   background: linear-gradient(180deg, rgb(2 3 5 / 0.8), rgb(2 3 5 / 0));
   pointer-events: none;
 }
@@ -908,8 +909,14 @@
     max-height: none;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     background: linear-gradient(90deg, rgb(2 3 5 / 0), var(--negro) 12%);
+  }
+  /* Centered while it fits; taller than the screen, it starts at the top and scrolls. */
+  .revelacion > :first-child {
+    margin-top: auto;
+  }
+  .revelacion > :last-child {
+    margin-bottom: auto;
   }
 }
 
@@ -923,7 +930,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 0 20px max(18px, env(safe-area-inset-bottom));
+  padding: 0 max(20px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   pointer-events: none;
 }
 
@@ -1010,8 +1017,8 @@
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
-  padding: 16px;
+  overflow-y: auto;
+  padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
   background: rgb(2 3 5 / 0.78);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
@@ -1023,6 +1030,8 @@
   flex-direction: column;
   gap: 12px;
   width: min(380px, 100%);
+  /* Centered while it fits; taller than the screen, it starts at the top and scrolls. */
+  margin: auto;
   padding: 22px 20px;
   border: 1px solid var(--borde);
   border-top: 2px solid var(--firulete);
@@ -1082,12 +1091,18 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 12px;
   overflow-y: auto;
   padding: 32px 20px;
   text-align: center;
   background: radial-gradient(ellipse at 50% 30%, #1a2129, var(--negro) 65%);
+}
+
+/* Two springs center what fits and give way when it doesn't, so nothing is cut off at the top. */
+.final::before,
+.final::after {
+  content: "";
+  flex: 1 0 0px;
 }
 
 .final-angel {
@@ -1359,8 +1374,7 @@
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
-  padding: 16px;
+  padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
   overflow-y: auto;
   background: radial-gradient(circle at 50% 38%, rgb(255 217 138 / 0.16), rgb(2 3 5 / 0.86) 58%);
   z-index: 4;
@@ -1373,6 +1387,7 @@
   align-items: center;
   gap: 10px;
   width: min(360px, 100%);
+  margin: auto;
   text-align: center;
 }
 
@@ -1518,7 +1533,7 @@
   position: absolute;
   inset: 0;
   overflow-y: auto;
-  padding: max(8px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   text-align: center;
   background: radial-gradient(ellipse at 50% 0%, #1d1410, var(--negro) 62%);
   z-index: 6;
@@ -1677,6 +1692,271 @@
   }
   .baul-ficha-texto {
     justify-items: center;
+  }
+}
+
+/* ----- A phone on its side -----
+   The screen is wide and very low (some 300 to 400 px), so everything that was
+   stacked is laid side by side, and what the player reads takes the bottom. */
+
+@media (orientation: landscape) and (max-height: 520px) {
+  /* Title: a low column on the left, over the cover. */
+  .titulo-juego {
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+  .titulo-contenido {
+    width: min(540px, 100%);
+    margin-block: auto;
+    margin-left: max(24px, 5vw, env(safe-area-inset-left));
+    padding: 12px 20px max(12px, env(safe-area-inset-bottom)) 0;
+  }
+  .titulo-juego h1 {
+    margin: 2px 0 8px;
+    font-size: clamp(2.75rem, 19vh, 4.5rem);
+  }
+  .titulo-bajada {
+    max-width: 38ch;
+    margin: 10px 0 14px;
+    font-size: 1.0625rem;
+    line-height: 1.35;
+  }
+  .titulo-nota {
+    display: none;
+  }
+  .titulo-pie {
+    margin-top: 2px;
+  }
+
+  .prologo {
+    padding: 16px max(24px, env(safe-area-inset-right)) 16px max(24px, env(safe-area-inset-left));
+  }
+  .prologo-linea {
+    max-width: 42ch;
+    font-size: clamp(1.25rem, 6.5vh, 1.75rem);
+  }
+  .prologo-ayuda {
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .coro h1 {
+    margin: 0 0 6px;
+    font-size: 2.25rem;
+  }
+  .baul h2 {
+    font-size: 2rem;
+  }
+
+  .final {
+    gap: 8px;
+    padding: 14px 20px;
+  }
+  .final-angel {
+    width: 84px;
+    height: 84px;
+  }
+  .final h1 {
+    margin: 2px 0;
+    font-size: 2rem;
+  }
+  .final p {
+    max-width: 62ch;
+    font-size: 1rem;
+  }
+
+  /* Level: the pad and the button sit in the bottom corners. While someone speaks
+     they step aside, and the words take the bottom from side to side. */
+  .nivel:has(.tactil) {
+    --controles: 0px;
+  }
+  .tactil {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    transition: opacity 0.15s;
+  }
+  .boton-a {
+    margin-bottom: 16px;
+  }
+  .nivel:has(.dialogo, .verso) .tactil {
+    opacity: 0;
+  }
+  .nivel:has(.dialogo, .verso) .tactil > * {
+    pointer-events: none;
+  }
+  .dialogo,
+  .verso {
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: min(720px, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    max-height: calc(100% - 16px);
+    overflow-y: auto;
+  }
+  .dialogo {
+    min-height: 0;
+    padding: 10px 14px 12px;
+  }
+  .dialogo .retrato {
+    width: 64px;
+    height: 64px;
+  }
+  .dialogo-texto {
+    font-size: 1.0625rem;
+    line-height: 1.4;
+  }
+  .verso {
+    padding: 10px 16px 8px;
+  }
+  .verso-numero {
+    margin-bottom: 4px;
+  }
+  .verso-texto {
+    margin-bottom: 6px;
+    font-size: 1.125rem;
+    line-height: 1.32;
+  }
+  .apagon {
+    font-size: 1.25rem;
+  }
+  .cartel-titulo {
+    max-width: 26ch;
+    margin: 4px 0 10px;
+    font-size: clamp(2rem, 14vh, 3rem);
+  }
+
+  /* Battle: the shadow and the light keep the middle, from top to bottom; its name
+     goes to the left corner and its words to the right. */
+  .batalla-cabecera {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    width: min(230px, 30%);
+    padding: 6px 10px 8px 6px;
+    transform: none;
+  }
+  .batalla-cabecera .retrato {
+    width: 44px;
+    height: 44px;
+  }
+  .batalla-nombre {
+    font-size: 1rem;
+  }
+  .batalla-panel {
+    top: max(8px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: auto;
+    left: auto;
+    width: min(240px, 31%);
+    padding: 8px 12px 10px;
+    transform: none;
+  }
+  .batalla-estado {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    min-height: 0;
+  }
+  .batalla-texto {
+    margin-top: 6px;
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+  .batalla-pista {
+    font-size: 0.875rem;
+  }
+
+  /* A keepsake just found: the object on the left, what it is on the right. */
+  .hallazgo {
+    padding-block: 10px;
+  }
+  .hallazgo-caja {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 22px;
+    align-items: center;
+    justify-items: start;
+    width: min(620px, 100%);
+    text-align: left;
+  }
+  .hallazgo-caja > * {
+    grid-column: 2;
+  }
+  .hallazgo-caja > .hallazgo-imagen {
+    grid-column: 1;
+    grid-row: 1 / span 6;
+    width: min(150px, 42vh);
+  }
+  .hallazgo h2 {
+    font-size: 1.625rem;
+  }
+  .hallazgo-linea {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+  .hallazgo-don {
+    margin: 2px 0;
+    padding: 7px 12px;
+    font-size: 1rem;
+  }
+  .hallazgo .boton-juego {
+    min-height: 44px;
+  }
+
+  /* Pause: the buttons in two columns. */
+  .pausa {
+    padding-block: 10px;
+  }
+  .pausa-caja {
+    gap: 8px;
+    padding: 12px 16px;
+  }
+  .pausa-caja h2 {
+    font-size: 1.5rem;
+  }
+  .pausa-menu {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: min(580px, 100%);
+  }
+  .pausa-menu > * {
+    flex: 1 1 100%;
+  }
+  .pausa-menu > .boton-juego {
+    flex: 1 1 40%;
+    min-height: 44px;
+  }
+  .pausa-menu > .boton-principal {
+    flex-basis: 100%;
+  }
+  .pausa-menu > .voz {
+    display: none;
+  }
+  /* The end of a page: the painting on the left, the rest in a low column. */
+  .revelacion {
+    width: 46%;
+    padding: 10px max(16px, env(safe-area-inset-right)) 0 16px;
+  }
+  .revelacion h2 {
+    margin: 2px 0 6px;
+    font-size: 1.5rem;
+  }
+  .revelacion .juego-adorno {
+    width: 150px;
+  }
+  .revelacion-significado {
+    margin: 8px auto 10px;
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+  .cuenta {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .cuenta-total {
+    font-size: 1.25rem;
+  }
+  .revelacion .titulo-acciones {
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+  }
+  .revelacion .titulo-acciones > * {
+    min-height: 44px;
+    font-size: 0.9375rem;
   }
 }
 
