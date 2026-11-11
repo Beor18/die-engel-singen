@@ -115,7 +115,9 @@ export type Don =
   /** El canto llega más lejos y aturde el doble. */
   | "mando"
   /** Las frases de las sombras traen una nota menos. */
-  | "compas";
+  | "compas"
+  /** Las notas de las sombras llegan más despacio. */
+  | "despacio";
 
 /** Un personaje u objeto de la ilustración que aparece dentro del nivel. */
 export type ElementoEscena = {

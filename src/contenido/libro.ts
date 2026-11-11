@@ -1381,4 +1381,77 @@ que bailar pudiera sentirse así.
       ],
     },
   },
+  {
+    id: "despacio",
+    orden: 18,
+    tipo: "poema",
+    titulo: "DESPACIO",
+    imagen: {
+      src: "/libro/despacio.png",
+      alt: "Una calle de noche, bajo la lluvia. Una pareja camina bajo un paraguas rojo y se mira sonriendo: él de sobretodo oscuro y bufanda gris, ella de abrigo negro y bufanda roja. A la izquierda, una fila de faroles encendidos y un árbol de hojas rojas; a la derecha, las vidrieras iluminadas de un local. El empedrado mojado refleja las luces.",
+    },
+    texto: `
+Todavía no conozco tus silencios
+ni vos conocés los míos.
+
+No sé qué camino elegiste
+ni cuánto pesa tu equipaje.
+
+Pero si empieza a llover,
+acercate.
+
+No prometo detener la tormenta.
+Sí compartir el paraguas.
+`,
+    significado: {
+      texto: `
+«Despacio»: dos personas que empiezan a conocerse y eligen
+acompañarse, incluso sin saber hacia dónde las lleva el camino.
+`,
+      enLaImagen: true,
+    },
+    escena: {
+      lugar: "calle",
+      elementos: [
+        {
+          imagen: "pareja-despacio",
+          nombre: "La pareja",
+          persona: true,
+          x: 0.5,
+          y: 0.82,
+          alto: 2.7,
+          ancho: 2,
+          dice: ["Todavía no nos conocemos del todo. Por eso caminamos despacio.", "Si te agarra la lluvia, acercate. Acá abajo hay lugar."],
+          conObjeto: { imagen: "paraguas", dice: ["Ya tenés el tuyo. Ahora te falta con quién compartirlo."] },
+        },
+        {
+          imagen: "vidriera",
+          nombre: "Vidriera",
+          x: 0.9,
+          y: 0.64,
+          alto: 3.2,
+          ancho: 2,
+          luz: { color: "#ffb060", alcance: 3.6, altura: 0.55 },
+          dice: ["Una vidriera encendida. Adentro hay luz y nadie tiene apuro."],
+        },
+        { imagen: "arbol-rojo", nombre: "Árbol", x: 0.07, y: 0.47, alto: 3.6, mueve: "viento", dice: ["Un árbol de hojas rojas. La lluvia las va soltando de a una."] },
+        { imagen: "paraguas", nombre: "Paraguas", x: 0.78, y: 0.74, alto: 0.8, pasable: true, levantar: true, mueve: "brilla", recuerdo: "despacio", dice: ["Un paraguas rojo, cerrado, apoyado contra la vidriera. Alguien lo dejó para el que pase sin uno. Lo guardás."] },
+      ],
+    },
+    tono: "#e8845a",
+    clima: {
+      particulas: [{ tipo: "lluvia", cantidad: 0.9 }],
+      zonas: [
+        { tipo: "luz", x: 0.093, y: 0.505, rx: 0.05, ry: 0.03, fuerza: 0.22, velocidad: 2.2, color: "#ffc070" },
+        { tipo: "luz", x: 0.146, y: 0.565, rx: 0.035, ry: 0.022, fuerza: 0.2, velocidad: 2.4, color: "#ffc070" },
+        { tipo: "luz", x: 0.726, y: 0.513, rx: 0.03, ry: 0.02, fuerza: 0.2, velocidad: 2.6, color: "#ffc070" },
+        { tipo: "luz", x: 0.9, y: 0.53, rx: 0.09, ry: 0.13, fuerza: 0.12, velocidad: 0.5, color: "#ffb060" },
+        { tipo: "centelleo", x: 0.9, y: 0.54, rx: 0.08, ry: 0.08, fuerza: 0.4, velocidad: 0.9 },
+        { tipo: "viento", x: 0.07, y: 0.42, rx: 0.085, ry: 0.055, fuerza: 0.6, velocidad: 1.1 },
+        { tipo: "niebla", x: 0.2, y: 0.62, rx: 0.16, ry: 0.06, fuerza: 0.2, color: "#8fa3b8" },
+        { tipo: "agua", x: 0.16, y: 0.8, rx: 0.12, ry: 0.045, fuerza: 0.6, velocidad: 0.7 },
+        { tipo: "agua", x: 0.79, y: 0.83, rx: 0.08, ry: 0.03, fuerza: 0.5, velocidad: 0.6 },
+      ],
+    },
+  },
 ];

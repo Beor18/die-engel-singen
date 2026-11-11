@@ -1698,6 +1698,7 @@ export class Engine {
       pace.good *= 1.35;
       pace.perfect *= 1.35;
     }
+    if (this.gifts.has("despacio")) pace.beat *= 1.2;
     const origin = shadow ? { x: lerp(shadow.fromX, shadow.x, shadow.t), y: lerp(shadow.fromY, shadow.y, shadow.t) } : this.playerPos();
     const count = guardian ? 120 : 80;
     this.battle = {

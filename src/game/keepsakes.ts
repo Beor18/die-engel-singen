@@ -33,6 +33,7 @@ export const GIFTS: Record<Gift, string> = {
   sello: "El guardián del título empieza más débil.",
   mando: "Tu canto llega más lejos y aturde el doble.",
   compas: "Las sombras cantan una nota menos por frase.",
+  despacio: "Las notas de las sombras llegan más despacio.",
 };
 
 export type Keepsake = {
