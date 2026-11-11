@@ -1536,4 +1536,78 @@ cuando nos animamos a ser directos.
       ],
     },
   },
+  {
+    id: "regen",
+    orden: 20,
+    tipo: "poema",
+    titulo: "REGEN",
+    imagen: {
+      src: "/libro/regen.png",
+      alt: "Una ventana de noche, con la lluvia corriendo por el vidrio. Afuera, entre la niebla azul, se ve el campanario de una iglesia con la campana encendida y una cruz arriba. Adentro, a la izquierda, una cortina roja y una vela encendida en un candelero de bronce. Sobre la mesa, un libro antiguo cerrado con una cinta roja, un paño de terciopelo rojo y pétalos de rosa.",
+    },
+    texto: `
+Mis besos bajan por tu cintura.
+Tus manos me piden que siga.
+
+Afuera repican las campanas.
+Adentro se deshace la cama.
+
+Comienza la lluvia.
+
+Cerrás los ojos y decís:
+«Dios mío».
+
+Me río.
+`,
+    significado: {
+      texto: `
+«Regen» significa «lluvia»: cuando el deseo
+hace temblar hasta a los santos.
+`,
+      enLaImagen: true,
+    },
+    escena: {
+      lugar: "cuarto",
+      elementos: [
+        {
+          imagen: "ventana-campanario",
+          nombre: "Ventana",
+          x: 0.72,
+          y: 0.42,
+          alto: 3.3,
+          luz: { color: "#5c8dff", alcance: 3.6, altura: 0.55 },
+          dice: ["Llueve contra el vidrio. Del otro lado, la campana de la torre sigue encendida."],
+          conObjeto: { imagen: "campanilla", dice: ["Hacés sonar la campanilla. Desde la torre, la campana grande le contesta."] },
+        },
+        {
+          imagen: "vela-bronce",
+          nombre: "Vela",
+          x: 0.1,
+          y: 0.62,
+          alto: 1.5,
+          mueve: "llama",
+          luz: { color: "#ffc070", alcance: 3.4, altura: 0.88 },
+          dice: ["Una vela en su candelero de bronce. La cera cae sin apuro."],
+        },
+        { imagen: "libro-terciopelo", nombre: "Libro", x: 0.3, y: 0.74, alto: 1, dice: ["Un libro cerrado sobre el terciopelo, con la cinta roja marcando la página. Esta noche nadie lo va a abrir."] },
+        { imagen: "telon", nombre: "Cortina", x: 0.05, y: 0.36, alto: 3.6, dice: ["Una cortina roja, pesada. Lo que pasa acá adentro no se ve desde la calle."] },
+        { imagen: "cama", nombre: "Cama", x: 0.5, y: 0.9, alto: 1.7, ancho: 2, dice: ["Una cama deshecha. Todavía está tibia."] },
+        { imagen: "campanilla", nombre: "Campanilla", x: 0.88, y: 0.78, alto: 0.7, pasable: true, levantar: true, mueve: "brilla", recuerdo: "repique", dice: ["Una campanilla de bronce, olvidada bajo la ventana. Cuando afuera repican las campanas, vibra sola. La guardás."] },
+      ],
+    },
+    tono: "#5f86c9",
+    clima: {
+      particulas: [{ tipo: "lluvia", cantidad: 0.85 }],
+      zonas: [
+        { tipo: "luz", x: 0.098, y: 0.535, rx: 0.04, ry: 0.025, fuerza: 0.24, velocidad: 2.4, color: "#ffc070" },
+        { tipo: "centelleo", x: 0.098, y: 0.54, rx: 0.035, ry: 0.022, fuerza: 0.5, velocidad: 1 },
+        { tipo: "luz", x: 0.899, y: 0.482, rx: 0.025, ry: 0.016, fuerza: 0.22, velocidad: 1.6, color: "#ffb060" },
+        { tipo: "agua", x: 0.47, y: 0.42, rx: 0.26, ry: 0.26, fuerza: 0.4, velocidad: 0.6 },
+        { tipo: "agua", x: 0.88, y: 0.42, rx: 0.1, ry: 0.26, fuerza: 0.4, velocidad: 0.6 },
+        { tipo: "centelleo", x: 0.6, y: 0.3, rx: 0.3, ry: 0.2, fuerza: 0.35, velocidad: 0.9 },
+        { tipo: "niebla", x: 0.8, y: 0.6, rx: 0.2, ry: 0.07, fuerza: 0.2, color: "#8fa3c8" },
+        { tipo: "viento", x: 0.055, y: 0.3, rx: 0.06, ry: 0.22, fuerza: 0.3, velocidad: 0.5 },
+      ],
+    },
+  },
 ];

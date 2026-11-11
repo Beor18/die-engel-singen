@@ -152,6 +152,9 @@ type Battle = {
 
 /** Seconds an answered note takes to fly from the light to the shadow. */
 const BOLT_TIME = 0.28;
+/** How far the bell of a rescued verse is heard, in tiles, and how long it stuns. */
+const TOLL_REACH = 7;
+const TOLL_STUN = 5;
 /** Where the lantern's flame is in the Voice's battle portrait, from 0 to 1. */
 const HERO_LAMP = { x: 0.893, y: 0.595 };
 /** Seconds the verse thief dashes before it can be stopped with a song. */
@@ -270,6 +273,7 @@ export class Engine {
   private fog!: HTMLCanvasElement;
   private painting!: HTMLImageElement;
   private rainy = false;
+  private rainHeard = false;
   /** How much of each tile the player has seen: explored places stay faintly visible. */
   private seen = new Float32Array(COLS * ROWS);
   private paintedArt: Painted | null = null;
@@ -559,6 +563,8 @@ export class Engine {
       for (const s of this.shadows) s.alive = false;
       this.stepsSinceEncounter = -1e9;
     },
+    /** The shadows still roaming, and whether each one is stunned. */
+    shadows: () => this.shadows.filter((s) => s.alive).map((s) => ({ x: s.x, y: s.y, stunned: s.stunned > 0 })),
     /** Where the verses still missing are. */
     verses: () => this.map.verses.filter((v) => !this.collected.has(v.index)).map((v) => ({ x: v.x, y: v.y, index: v.index })),
     /** Walks the Voice to a tile along the way a tap would take; false if it can't get there. */
@@ -621,7 +627,10 @@ export class Engine {
         () => {},
       );
       const particles = this.o.level.weather.particulas ?? [];
-      this.rainy = particles.some((p) => p.tipo === "lluvia");
+      const indoors = place ? INDOORS.has(place) : false;
+      // Indoors the rain stays on the other side of the window: it is heard, and nothing gets wet.
+      this.rainHeard = particles.some((p) => p.tipo === "lluvia");
+      this.rainy = this.rainHeard && !indoors;
       this.paintedArt = painted;
       this.sceneArt = sceneArt;
       this.art = buildWorldArt(
@@ -633,7 +642,7 @@ export class Engine {
           tone: this.o.level.tone,
           rain: this.rainy,
           petals: particles.some((p) => p.tipo === "petalos"),
-          indoors: place ? INDOORS.has(place) : false,
+          indoors,
         },
       );
       this.fog = fogTile(hash(this.o.level.id) ^ 0x6f);
@@ -696,7 +705,7 @@ export class Engine {
       this.key = this.musicalKey();
       const audio = this.o.audio;
       audio.startChoir(this.key, 1);
-      audio.setRain(this.rainy);
+      audio.setRain(this.rainHeard);
       this.initWeather();
 
       this.mode = "intro";
@@ -1448,6 +1457,12 @@ export class Engine {
     this.o.audio.verse();
     this.o.audio.setVoices(1 + this.collected.size);
     if (this.gifts.has("brindis") && this.light < this.maxLight) this.light++;
+    // A bell tolls for the verse, and the shadows nearby stop to listen.
+    if (this.gifts.has("repique")) {
+      this.o.audio.toll();
+      this.singPulse = 1;
+      for (const s of this.shadows) if (s.alive && manhattan(s, this.player) <= TOLL_REACH) s.stunned = Math.max(s.stunned, TOLL_STUN);
+    }
     this.earn("verses", VOICE.verse);
     this.say(
       [{ speaker: "verse", name: `Verso ${this.collected.size} de ${total}`, text: v.lines.join("\n") }],
@@ -2128,6 +2143,7 @@ export class Engine {
     this.drops = [];
     const area = (this.cw * this.ch) / (this.dpr * this.dpr * 390 * 844);
     for (const { tipo, cantidad = 1 } of this.o.level.weather.particulas ?? []) {
+      if (tipo === "lluvia" && !this.rainy) continue;
       const base = tipo === "lluvia" ? 110 : tipo === "polen" ? 36 : 30;
       const n = Math.round(base * cantidad * clamp(area, 0.6, 2.4));
       for (let i = 0; i < n; i++) this.drops.push(this.newDrop(tipo, true));

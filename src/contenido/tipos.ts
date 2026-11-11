@@ -119,7 +119,9 @@ export type Don =
   /** Las notas de las sombras llegan más despacio. */
   | "despacio"
   /** Cada batalla empieza con un golpe de la Voz. */
-  | "frente";
+  | "frente"
+  /** Cada verso rescatado hace sonar una campana que aturde a las sombras cercanas. */
+  | "repique";
 
 /** Un personaje u objeto de la ilustración que aparece dentro del nivel. */
 export type ElementoEscena = {

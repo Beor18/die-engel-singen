@@ -504,6 +504,14 @@ export class AudioEngine {
     this.thump(t + 0.18, 0.2 * intensity, this.fxBus);
   }
 
+  /** A church bell, struck twice: low and slow. */
+  toll() {
+    if (!this.ctx) return;
+    const t = this.now;
+    this.bell(hz(this.key.root - 12), t, 0.09, 2.8);
+    this.bell(hz(this.key.root - 5), t + 0.34, 0.06, 2.4);
+  }
+
   lamp() {
     if (!this.ctx) return;
     const t = this.now;
