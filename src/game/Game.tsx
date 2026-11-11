@@ -836,6 +836,7 @@ function Dialogue({ ui, onNext, touch }: { ui: UIState; onNext: () => void; touc
 
 function BattlePanel({ ui, touch, onA, onFlee }: { ui: UIState; touch: boolean; onA: () => void; onFlee: () => void }) {
   const b = ui.battle!;
+  const playing = b.phase === "rest" || b.phase === "call";
   return (
     <>
       {b.phase !== "end" && (
@@ -846,35 +847,56 @@ function BattlePanel({ ui, touch, onA, onFlee }: { ui: UIState; touch: boolean; 
           onPointerDown={(e) => (e.preventDefault(), onA())}
         />
       )}
-      <div className="batalla-cabecera">
-        <Portrait speaker={b.guardian ? "guardian" : "shadow"} />
-        <div>
-          <p className="batalla-nombre">{b.name}</p>
-          <div className="batalla-barra" role="meter" aria-label="Oscuridad" aria-valuemin={0} aria-valuemax={b.maxHealth} aria-valuenow={b.health}>
-            <span style={{ width: `${(b.health / b.maxHealth) * 100}%` }} />
+      {/* A duel: the shadow's name up on the left, the Voice's down on the right, the words below both. */}
+      {b.phase !== "intro" && (
+        <>
+          <div className="batalla-cabecera">
+            <p className="batalla-nombre">{b.name}</p>
+            <div className="batalla-medida">
+              <span aria-hidden="true">Oscuridad</span>
+              <div className="batalla-barra" role="meter" aria-label="Oscuridad" aria-valuemin={0} aria-valuemax={b.maxHealth} aria-valuenow={b.health}>
+                <span style={{ width: `${(b.health / b.maxHealth) * 100}%` }} />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      <div className="batalla-panel" aria-live="polite">
-        <div className="batalla-estado">
-          <div className="batalla-luz" role="meter" aria-label="Tu luz" aria-valuemin={0} aria-valuemax={ui.maxLight} aria-valuenow={ui.light}>
-            <span className="batalla-luz-nombre" aria-hidden="true">
-              Tu luz
-            </span>
-            {Array.from({ length: ui.maxLight }, (_, i) => (
-              <span key={i} className={i < ui.light ? "llama" : "llama apagada"} />
-            ))}
+          <div className="batalla-pie">
+            <div className="batalla-voz">
+              <p className="batalla-nombre">
+                La Voz
+                <span className="batalla-rango">{ui.voice.rank}</span>
+              </p>
+              <div className="batalla-medida">
+                <span aria-hidden="true">Luz</span>
+                <div className="batalla-luz" role="meter" aria-label="Tu luz" aria-valuemin={0} aria-valuemax={ui.maxLight} aria-valuenow={ui.light}>
+                  {Array.from({ length: ui.maxLight }, (_, i) => (
+                    <span key={i} className={i < ui.light ? "llama" : "llama apagada"} />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="batalla-panel">
+              <div className="batalla-dicho" aria-live="polite">
+                {b.text && <p className={b.verse ? "batalla-texto batalla-verso" : "batalla-texto"}>{b.text}</p>}
+                {b.hint && <p className="batalla-pista">{b.hint}</p>}
+              </div>
+              {playing && (
+                <div className="batalla-acciones">
+                  <button type="button" className="batalla-accion batalla-cantar" tabIndex={-1} onPointerDown={(e) => (e.preventDefault(), onA())}>
+                    {b.phase === "call" ? "Cantar" : "Seguir"}
+                    {!touch && <span className="tecla">Espacio</span>}
+                  </button>
+                  {b.canFlee && (
+                    <button type="button" className="batalla-accion batalla-huir" onClick={onFlee} aria-keyshortcuts="H">
+                      Huir
+                      {!touch && <span className="tecla">H</span>}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-          {b.canFlee && (
-            <button type="button" className="batalla-huir" onClick={onFlee} aria-keyshortcuts="H">
-              Huir
-              {!touch && <span className="tecla">H</span>}
-            </button>
-          )}
-        </div>
-        {b.text && <p className={b.verse ? "batalla-texto batalla-verso" : "batalla-texto"}>{b.text}</p>}
-        {b.hint && <p className="batalla-pista">{b.hint}</p>}
-      </div>
+        </>
+      )}
     </>
   );
 }

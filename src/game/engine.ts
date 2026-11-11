@@ -152,6 +152,8 @@ type Battle = {
 
 /** Seconds an answered note takes to fly from the light to the shadow. */
 const BOLT_TIME = 0.28;
+/** Where the lantern's flame is in the Voice's battle portrait, from 0 to 1. */
+const HERO_LAMP = { x: 0.893, y: 0.595 };
 /** Seconds the verse thief dashes before it can be stopped with a song. */
 const THIEF_SPRINT = 1.6;
 
@@ -276,6 +278,8 @@ export class Engine {
   private lampTints = new Map<string, number[]>();
   private blurred!: HTMLCanvasElement;
   private creatures: { shadow: HTMLCanvasElement | null; guardian: HTMLCanvasElement | null } = { shadow: null, guardian: null };
+  /** The Voice seen from behind, large: how it stands in a battle. */
+  private hero: HTMLImageElement | null = null;
   private key!: Key;
 
   private mode: Mode = "loading";
@@ -612,6 +616,10 @@ export class Engine {
       this.sprites = buildSprites();
       void this.loadCreature("/juego/sombra.jpg", "shadow");
       void this.loadCreature("/juego/guardian.jpg", "guardian");
+      void this.loadImage("/juego/arte/voz-batalla.webp").then(
+        (img) => (this.hero = img),
+        () => {},
+      );
       const particles = this.o.level.weather.particulas ?? [];
       this.rainy = particles.some((p) => p.tipo === "lluvia");
       this.paintedArt = painted;
@@ -1993,7 +2001,9 @@ export class Engine {
       b.intro = Math.min(1, b.intro + dt / (this.o.reducedMotion ? 0.4 : 0.9));
       if (b.intro >= 1 && b.clock > (this.o.reducedMotion ? 0.6 : 1.3)) {
         b.nextBeat = b.clock + 0.1;
-        this.rest(this.whisper(), this.phraseHint());
+        // It steps in front of the Voice before it sings.
+        this.o.audio.whisper(0, 0.05);
+        this.rest(b.guardian ? `${b.name} se levanta frente a vos.` : `${b.name} te cierra el paso.`, this.phraseHint());
       }
       return;
     }
@@ -3117,22 +3127,55 @@ export class Engine {
     vignette.addColorStop(1, "rgba(2,3,5,0.92)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, w, h);
-    const fade = clamp(b.clock / 0.4);
-    if (fade < 1) {
-      ctx.fillStyle = `rgba(2,3,5,${1 - fade})`;
-      ctx.fillRect(0, 0, w, h);
-    }
-
     const portrait = h > w;
-    // A phone on its side: the words go to the sides, and the shadow and the light share the whole height.
+    // A phone on its side has little height: the figures grow to use it.
     const low = !portrait && h < 520 * this.dpr;
-    const cx = w / 2;
-    const cy = portrait ? h * 0.3 : low ? h * 0.36 : h * 0.4;
-    const size = Math.min(w, h) * (portrait ? 0.3 : 0.24) * (b.guardian ? 1.2 : 1);
+    const still = this.o.reducedMotion;
+    // The stage of a duel: the shadow up on the right, the Voice down on the left with its
+    // back to us, and the words below both.
+    const sw = Math.min(w, h * 2.2);
+    const sx = (w - sw) / 2;
+    const floor = h * (portrait ? 0.775 : low ? 0.72 : 0.8);
+    // Each one comes in from its side once the dark has closed.
+    const arrive = still ? 1 : ease(clamp((b.clock - 0.9) / 0.45));
+    const away = (1 - arrive) * sw * 0.45;
     const tone = rgb(this.o.level.tone);
+    const size = (portrait ? w * 0.27 : h * (low ? 0.27 : 0.24)) * (b.guardian ? 1.2 : 1);
+    const cx = sx + sw * (portrait ? (b.guardian ? 0.67 : 0.71) : low ? 0.68 : 0.72) + away;
+    const cy = h * (portrait ? 0.27 : low ? 0.31 : 0.34);
+
+    // The Voice holds its lantern out toward the shadow: that light is where everything happens.
+    const hero = this.hero;
+    // On a phone on its side it stands lower, so its hood stays clear of the shadow's name.
+    const hh = h * (portrait ? 0.4 : low ? 0.56 : 0.6);
+    const hw = hh * (hero ? hero.width / hero.height : 0.5);
+    const hx = Math.max(sx + sw * (portrait ? 0.23 : 0.2) - hw / 2, sx + 4 * this.dpr) - away;
+    const hy = floor + hh * (low ? 0.1 : 0.06) - hh;
+    const lx = hx + hw * HERO_LAMP.x;
+    const ly = hy + hh * HERO_LAMP.y;
+
+    // A pool of dark for the shadow to stand on.
+    const dying = b.dying;
+    const poolY = cy + size * (portrait ? 0.92 : 0.82);
+    ctx.save();
+    ctx.translate(cx, poolY);
+    ctx.scale(1, 0.2);
+    const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.15);
+    pool.addColorStop(0, `rgba(0,0,0,${0.75 * arrive * (1 - dying)})`);
+    pool.addColorStop(0.72, `rgba(${Math.round(tone[0] * 0.25)},${Math.round(tone[1] * 0.12)},${Math.round(tone[2] * 0.14)},${0.5 * arrive * (1 - dying)})`);
+    pool.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = pool;
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 1.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(199,36,47,${0.3 * arrive * (1 - dying)})`;
+    ctx.lineWidth = 1.5 * this.dpr;
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.86, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
 
     // The shadow: its painted portrait breathing inside a swirl of smoke.
-    const dying = b.dying;
     const painted = b.guardian ? this.creatures.guardian : this.creatures.shadow;
     if (painted) {
       const breathe = 1 + Math.sin(t * 1.6) * 0.02 + b.pulse * b.pulse * 0.015;
@@ -3140,7 +3183,7 @@ export class Engine {
       const jitter = b.hurt > 0 ? (this.rng() - 0.5) * 14 * b.hurt * this.dpr : 0;
       const x = cx - sz / 2 + jitter;
       const y = cy - sz * 0.46 - dying * size * 0.8;
-      ctx.globalAlpha = (1 - dying) * fade;
+      ctx.globalAlpha = (1 - dying) * arrive;
       ctx.drawImage(painted, x, y, sz, sz);
       if (b.hurt > 0.05) {
         ctx.globalCompositeOperation = "lighter";
@@ -3155,7 +3198,7 @@ export class Engine {
       const rad = size * (0.15 + p.r * 0.6) * (1 + 0.07 * Math.sin(t * 2 + p.o));
       let px = cx + Math.cos(ang) * rad * 0.85 + (b.hurt > 0 ? (this.rng() - 0.5) * 10 * b.hurt * this.dpr : 0);
       let py = cy + Math.sin(ang) * rad + Math.sin(t * 1.3 + p.o) * size * 0.04 + p.r * size * 0.25;
-      let alpha = painted ? 0.09 : 0.5;
+      let alpha = (painted ? 0.09 : 0.5) * arrive;
       let color = "4,3,8";
       if (dying > 0) {
         py -= dying * size * (1 + p.r * 2.5);
@@ -3169,7 +3212,7 @@ export class Engine {
       ctx.fill();
     }
     if (dying < 0.4 && !painted) {
-      const fadeOut = 1 - dying / 0.4;
+      const fadeOut = (1 - dying / 0.4) * arrive;
       if (b.guardian) {
         ctx.fillStyle = `rgba(232,226,214,${0.9 * fadeOut})`;
         ctx.beginPath();
@@ -3201,42 +3244,75 @@ export class Engine {
       }
     }
 
-    // Your light, below: the one place where everything happens.
-    const ly = portrait ? h * 0.62 : low ? h * 0.74 : h * 0.68;
-    const R = clamp(Math.min(w, h) * 0.07, 26 * this.dpr, 44 * this.dpr);
+    // The glow of the lantern behind the Voice, then the Voice, then the flame over it.
+    const R = clamp(Math.min(w, h) * 0.07, (low ? 22 : 26) * this.dpr, 44 * this.dpr);
     const strength = 0.5 + 0.5 * (this.light / this.maxLight);
     const beat = b.pulse * b.pulse;
-    const glowR = R * 2.8 * strength * (1 + beat * 0.08) * (1 + b.flare * 0.6);
-    const lg = ctx.createRadialGradient(cx, ly, 0, cx, ly, glowR);
-    lg.addColorStop(0, `rgba(255,246,216,${0.95 * strength})`);
-    lg.addColorStop(0.16, `rgba(255,217,138,${0.6 * strength})`);
+    const glowR = R * 3.6 * strength * (1 + beat * 0.08) * (1 + b.flare * 0.6);
+    const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, glowR);
+    lg.addColorStop(0, `rgba(255,236,190,${0.6 * strength * arrive})`);
+    lg.addColorStop(0.28, `rgba(255,217,138,${0.3 * strength * arrive})`);
     lg.addColorStop(1, "rgba(255,217,138,0)");
     ctx.fillStyle = lg;
-    ctx.fillRect(cx - glowR, ly - glowR, glowR * 2, glowR * 2);
+    ctx.fillRect(lx - glowR, ly - glowR, glowR * 2, glowR * 2);
+    if (hero) {
+      // Hurt, it flickers for a moment.
+      const flicker = !still && b.wound > 0.2 && Math.floor(t * 16) % 2 === 0 ? 0.3 : 1;
+      ctx.globalAlpha = arrive * flicker;
+      ctx.drawImage(hero, hx, hy + (still ? 0 : Math.sin(t * 1.3) * hh * 0.004), hw, hh);
+      ctx.globalAlpha = 1;
+      if (this.halo) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = `rgba(255,226,150,${(0.75 + Math.sin(t * 2) * 0.15) * arrive})`;
+        ctx.lineWidth = Math.max(2 * this.dpr, hw * 0.022);
+        ctx.shadowColor = "rgba(255,214,130,0.9)";
+        ctx.shadowBlur = 10 * this.dpr;
+        ctx.beginPath();
+        ctx.ellipse(hx + hw * 0.47, hy - hh * 0.035 + Math.sin(t * 1.6) * hh * 0.004, hw * 0.21, hw * 0.06, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    ctx.globalCompositeOperation = "lighter";
+    const core = ctx.createRadialGradient(lx, ly, 0, lx, ly, R * 1.5);
+    core.addColorStop(0, `rgba(255,240,200,${0.5 * strength * arrive})`);
+    core.addColorStop(1, "rgba(255,217,138,0)");
+    ctx.fillStyle = core;
+    ctx.fillRect(lx - R * 1.5, ly - R * 1.5, R * 3, R * 3);
+    ctx.globalCompositeOperation = "source-over";
     if (b.wound > 0) {
-      const wg = ctx.createRadialGradient(cx, ly, 0, cx, ly, R * 2.4);
+      const wg = ctx.createRadialGradient(lx, ly, 0, lx, ly, R * 2.4);
       wg.addColorStop(0, `rgba(255,40,50,${0.55 * b.wound})`);
       wg.addColorStop(1, "rgba(255,40,50,0)");
       ctx.fillStyle = wg;
-      ctx.fillRect(cx - R * 2.4, ly - R * 2.4, R * 4.8, R * 4.8);
+      ctx.fillRect(lx - R * 2.4, ly - R * 2.4, R * 4.8, R * 4.8);
     }
 
     const playing = b.phase === "call" || b.phase === "rest";
     const progress = (n: BattleNote) => (b.clock - (n.at - n.travel)) / n.travel;
-    // Notes leave the shadow's mouth, or come from the sides when it won't look at you.
-    const source = (side: number) =>
-      side === 0 ? { x: cx, y: cy - size * 0.05 } : { x: cx + side * Math.min(w * 0.42, size * 1.7), y: cy + size * 0.45 };
+    // Notes leave the shadow's mouth, or come from either side of it when it won't look at you.
+    const mouth = { x: cx, y: cy - size * 0.05 };
+    const spread = portrait ? 0.66 : 0.34;
+    const source = (side: number) => {
+      if (side === 0) return mouth;
+      const vx = (mouth.x - lx) * 0.85;
+      const vy = (mouth.y - ly) * 0.85;
+      const cos = Math.cos(side * spread);
+      const sin = Math.sin(side * spread);
+      return { x: clamp(lx + vx * cos - vy * sin, sx + sw * 0.04, sx + sw * 0.96), y: clamp(ly + vx * sin + vy * cos, h * 0.07, floor - R) };
+    };
 
     // The ring around the light: where the notes must be answered. It glows as one comes close.
     let near = 0;
     if (b.phase === "call") for (const n of b.notes) if (!n.result) near = Math.max(near, clamp((progress(n) - 0.55) / 0.45));
     const ringR = R * (1 + beat * 0.07);
-    ctx.fillStyle = `rgba(255,226,160,${0.05 + 0.1 * near})`;
+    ctx.fillStyle = `rgba(255,226,160,${(0.05 + 0.1 * near) * arrive})`;
     ctx.beginPath();
-    ctx.arc(cx, ly, ringR, 0, Math.PI * 2);
+    ctx.arc(lx, ly, ringR, 0, Math.PI * 2);
     ctx.fill();
     ctx.lineWidth = 3 * this.dpr;
-    ctx.strokeStyle = `rgba(255,226,160,${(playing ? 0.45 : 0.15) + 0.55 * near})`;
+    ctx.strokeStyle = `rgba(255,226,160,${((playing ? 0.45 : 0.15) + 0.55 * near) * arrive})`;
     ctx.stroke();
 
     if (b.phase === "call") {
@@ -3247,10 +3323,10 @@ export class Engine {
       ctx.strokeStyle = "rgba(255,120,128,0.16)";
       for (const side of new Set(b.notes.filter((n) => !n.result).map((n) => n.side))) {
         const s = source(side);
-        const len = Math.hypot(cx - s.x, ly - s.y);
+        const len = Math.hypot(lx - s.x, ly - s.y);
         ctx.beginPath();
         ctx.moveTo(s.x, s.y);
-        ctx.lineTo(cx - ((cx - s.x) / len) * ringR, ly - ((ly - s.y) / len) * ringR);
+        ctx.lineTo(lx - ((lx - s.x) / len) * ringR, ly - ((ly - s.y) / len) * ringR);
         ctx.stroke();
       }
       ctx.restore();
@@ -3266,31 +3342,34 @@ export class Engine {
         ctx.strokeStyle = answered ? `rgba(255,236,180,${(1 - k) * (n.result === "perfect" ? 1 : 0.7)})` : `rgba(255,60,70,${(1 - k) * 0.8})`;
         ctx.lineWidth = (answered ? 4 : 3) * this.dpr * (1 - k * 0.6);
         ctx.beginPath();
-        ctx.arc(cx, ly, ringR * (1 + k * (answered ? 1.6 : 0.9)), 0, Math.PI * 2);
+        ctx.arc(lx, ly, ringR * (1 + k * (answered ? 1.6 : 0.9)), 0, Math.PI * 2);
         ctx.stroke();
         continue;
       }
       let p = progress(n);
       if (p < 0) continue;
-      if (n.hold) p = Math.min(p, 1);
+      // A note left in the air when the shadow falls stops at the light and goes out with it.
+      if (n.hold || b.phase === "end") p = Math.min(p, 1);
       const s = source(n.side);
-      const x = lerp(s.x, cx, p) + (n.style === "offbeat" ? Math.sin(t * 37 + n.at * 11) * 1.6 * this.dpr : 0);
+      const x = lerp(s.x, lx, p) + (n.style === "offbeat" ? Math.sin(t * 37 + n.at * 11) * 1.6 * this.dpr : 0);
       const y = lerp(s.y, ly, p);
-      let alpha = clamp(p * 6) * (1 - b.dying);
+      let alpha = clamp(p * 6) * (1 - clamp(b.dying * 3));
       // Olvido's notes fade on the way: the pulse tells when they arrive.
       if (n.style === "fade") alpha *= p < 0.3 ? 1 : clamp(1 - (p - 0.3) / 0.25);
       this.drawDarkNote(ctx, x, y, R * (0.34 + 0.14 * Math.min(1, p)), alpha);
     }
 
-    // Answered notes fly back at the shadow as light.
+    // Answered notes fly back at the shadow as light, in a shallow arc.
+    const reach = Math.hypot(cx - lx, cy - ly) || 1;
     for (const bolt of b.bolts) {
       if (bolt.t < 0) continue;
       const f = bolt.t / BOLT_TIME;
       for (let k = 0; k < 4; k++) {
         const g = Math.max(0, f - k * 0.07);
         const e = 1 - (1 - g) * (1 - g);
-        const x = cx + Math.sin(g * Math.PI) * R * (bolt.big ? 0 : 0.7);
-        const y = lerp(ly - ringR, cy, e);
+        const arc = Math.sin(g * Math.PI) * R * (bolt.big ? 0 : 0.9);
+        const x = lerp(lx, cx, e) + ((cy - ly) / reach) * arc;
+        const y = lerp(ly, cy, e) - ((cx - lx) / reach) * arc;
         const r = R * (bolt.big ? 0.7 : 0.32) * (1 - k * 0.18);
         const bg = ctx.createRadialGradient(x, y, 0, x, y, r * 2);
         bg.addColorStop(0, `rgba(255,248,224,${0.95 - k * 0.22})`);
@@ -3307,36 +3386,43 @@ export class Engine {
       ctx.strokeStyle = `rgba(255,236,180,${b.flare * 0.7})`;
       ctx.lineWidth = 6 * this.dpr * b.flare;
       ctx.beginPath();
-      ctx.arc(cx, ly, ringR * (1.2 + k * 5), 0, Math.PI * 2);
+      ctx.arc(lx, ly, ringR * (1.2 + k * 5), 0, Math.PI * 2);
       ctx.stroke();
     }
 
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
+    const edge = 8 * this.dpr;
     // The first battle points at the light and says when.
     if (b.lesson && playing) {
       const held = b.notes.find((n) => n.hold && !n.result && b.clock >= n.at);
       const cue = held ?? (b.lesson === 2 ? b.notes.find((n) => !n.result && Math.abs(b.clock - n.at) < 0.18) : undefined);
       ctx.font = `italic ${Math.round(16 * this.dpr)}px ${this.font}`;
       ctx.fillStyle = "rgba(247,247,245,0.75)";
-      ctx.fillText(held ? (this.o.touch ? "Tocá" : "Espacio") : "Tu luz", cx, ly + ringR + 24 * this.dpr);
+      ctx.fillText(held ? (this.o.touch ? "Tocá" : "Espacio") : "Tu luz", lx, ly + ringR + 24 * this.dpr);
       if (cue) {
         ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 10);
         ctx.font = `italic ${Math.round(30 * this.dpr)}px ${this.font}`;
         ctx.fillStyle = "#fff1c2";
-        ctx.fillText("¡Ahora!", cx, ly - ringR - 16 * this.dpr);
+        ctx.fillText("¡Ahora!", Math.max(lx, edge + ctx.measureText("¡Ahora!").width / 2), ly - ringR - 16 * this.dpr);
         ctx.globalAlpha = 1;
       }
     }
 
-    // How each answer went, over the light; what happened to the light itself, beside it.
+    // How each answer went, over the light; what happened to the light itself, beside it,
+    // or higher up where there is no room beside: an upright phone keeps the Voice's box there.
     for (const pop of b.popups) {
       ctx.globalAlpha = clamp((pop.low ? 1.4 : 0.9) - pop.t, 0, 1) * clamp(pop.t * 12);
       ctx.fillStyle = pop.color;
       ctx.font = `italic ${Math.round((pop.big ? 30 : pop.low ? 20 : 24) * this.dpr)}px ${this.font}`;
-      ctx.textAlign = pop.low ? "left" : "center";
-      if (pop.low) ctx.fillText(pop.text, cx + ringR + 14 * this.dpr, ly + 7 * this.dpr - pop.t * 12 * this.dpr);
-      else ctx.fillText(pop.text, cx, ly - ringR - 18 * this.dpr - pop.t * 40 * this.dpr);
+      ctx.textAlign = "left";
+      const tw = ctx.measureText(pop.text).width;
+      const centered = clamp(lx - tw / 2, edge, w - tw - edge);
+      if (pop.low) {
+        const beside = lx + ringR + 14 * this.dpr;
+        const fits = !portrait && beside + tw < w - edge;
+        ctx.fillText(pop.text, fits ? beside : centered, (fits ? ly + 7 * this.dpr : ly - ringR - 64 * this.dpr) - pop.t * 12 * this.dpr);
+      } else ctx.fillText(pop.text, centered, ly - ringR - 18 * this.dpr - pop.t * 40 * this.dpr);
     }
     ctx.globalAlpha = 1;
     ctx.textAlign = "center";

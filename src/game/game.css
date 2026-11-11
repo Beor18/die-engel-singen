@@ -707,38 +707,105 @@
   cursor: pointer;
 }
 
-.batalla-cabecera {
-  position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  left: 50%;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  width: min(420px, calc(100% - 24px));
-  padding: 8px 12px 10px 8px;
-  transform: translateX(-50%);
-  border: 1px solid var(--borde);
-  background: rgb(2 3 5 / 0.75);
+/* A duel: the shadow's name up on the left, leaning toward it; the Voice's down on the
+   right, above the words. Both lean the same way, along the line between the two. */
+.batalla-cabecera,
+.batalla-voz {
+  isolation: isolate;
   pointer-events: none;
 }
 
-.batalla-cabecera .retrato {
-  width: 52px;
-  height: 52px;
+/* The foot of the screen: the Voice's box sits on the words, and rises with them when they grow. */
+.batalla-pie {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  pointer-events: none;
 }
 
-.batalla-cabecera > div {
-  flex: 1;
+.batalla-cabecera::before,
+.batalla-voz::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border: 1px solid var(--borde);
+  background: rgb(2 3 5 / 0.84);
+  transform: skewX(-16deg);
+}
+
+.batalla-cabecera {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 0;
+  width: min(66%, 320px);
+  padding: 8px 34px 11px max(14px, env(safe-area-inset-left));
+  animation: batalla-entra-izq 0.32s ease-out both;
+}
+
+.batalla-cabecera::before {
+  inset: 0 0 0 -60px;
+  border-bottom: 2px solid var(--firulete);
+  transform-origin: 0 0;
+}
+
+.batalla-voz {
+  position: relative;
+  width: min(50%, 250px);
+  padding: 8px max(14px, env(safe-area-inset-right)) 9px 26px;
+  animation: batalla-entra-der 0.32s ease-out both;
+}
+
+.batalla-voz::before {
+  inset: 0 -60px 0 0;
+  border-top: 2px solid var(--firulete);
+  transform-origin: 100% 100%;
 }
 
 .batalla-nombre {
   margin: 0 0 6px;
   font: 400 1.0625rem / 1.2 var(--f-titulo), Georgia, serif;
   letter-spacing: 0.04em;
+  text-wrap: balance;
+}
+
+/* The Voice's name and its rank share one line; the rank gives way first. */
+.batalla-voz .batalla-nombre {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.batalla-rango {
+  overflow: hidden;
+  font: italic 400 0.75rem / 1.3 var(--f-texto), Georgia, serif;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  color: rgb(247 247 245 / 0.65);
+}
+
+.batalla-medida {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 14px;
+}
+
+.batalla-medida > span {
+  font-size: 0.8125rem;
+  font-style: italic;
+  line-height: 1;
+  color: rgb(247 247 245 / 0.7);
 }
 
 .batalla-barra {
-  height: 6px;
+  flex: 1;
+  height: 7px;
   background: rgb(247 247 245 / 0.12);
 }
 
@@ -746,25 +813,46 @@
   display: block;
   height: 100%;
   background: linear-gradient(90deg, var(--firulete), #ff2a36);
-  transition: width 0.25s ease-out;
+  transition: width 0.45s ease-out;
 }
 
+.batalla-luz {
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+
+.batalla-luz .llama {
+  width: 8px;
+  height: 12px;
+}
+
+/* The words: what the shadow says on the left, what the Voice can do on the right. */
 .batalla-panel {
-  position: absolute;
-  left: 50%;
-  bottom: max(12px, env(safe-area-inset-bottom));
-  width: min(640px, calc(100% - 24px));
-  padding: 12px 16px 14px;
-  transform: translateX(-50%);
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  align-self: stretch;
+  min-height: 21%;
+  margin-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
+  padding: 12px 14px;
   border: 1px solid var(--borde);
   border-top: 2px solid var(--firulete);
-  background: rgb(2 3 5 / 0.92);
+  background: rgb(2 3 5 / 0.94);
   pointer-events: none;
+  animation: batalla-sube 0.3s ease-out both;
+}
+
+.batalla-dicho {
+  flex: 1;
+  align-self: center;
+  min-width: 0;
 }
 
 .batalla-texto {
-  margin: 8px 0 0;
-  font-size: 1.125rem;
+  margin: 0;
+  font-size: 1.0625rem;
   line-height: 1.4;
 }
 
@@ -775,37 +863,28 @@
   color: var(--oro);
 }
 
-.batalla-estado {
+.batalla-pista:first-child {
+  margin-top: 0;
+}
+
+.batalla-acciones {
   display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 44px;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  padding-left: 12px;
+  border-left: 1px solid var(--borde);
 }
 
-.batalla-luz {
-  align-items: center;
-}
-
-.batalla-luz .llama {
-  width: 9px;
-  height: 13px;
-}
-
-.batalla-luz-nombre {
-  margin-right: 6px;
-  font-size: 0.875rem;
-  font-style: italic;
-  color: rgb(247 247 245 / 0.7);
-}
-
-.batalla-huir {
+.batalla-accion {
   appearance: none;
   display: inline-flex;
   gap: 8px;
   align-items: center;
+  justify-content: space-between;
+  min-width: 86px;
   min-height: 44px;
-  padding: 6px 14px;
+  padding: 6px 12px;
   border: 1px solid var(--borde);
   background: rgb(247 247 245 / 0.04);
   font-size: 0.9375rem;
@@ -813,15 +892,78 @@
   pointer-events: auto;
 }
 
-.batalla-huir:hover {
+.batalla-accion:hover {
   border-color: rgb(247 247 245 / 0.4);
 }
 
-.batalla-huir .tecla {
+.batalla-cantar {
+  border-color: rgb(199 36 47 / 0.7);
+  background: rgb(199 36 47 / 0.16);
+}
+
+.batalla-accion .tecla {
   padding: 0 5px;
   border: 1px solid rgb(247 247 245 / 0.3);
   font-size: 0.75rem;
   color: rgb(247 247 245 / 0.65);
+}
+
+@keyframes batalla-entra-izq {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+
+@keyframes batalla-entra-der {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+@keyframes batalla-sube {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* With room to the sides, the words keep away from the edges and what the Voice can do goes in a row. */
+@media (orientation: landscape) {
+  .batalla-cabecera {
+    top: max(5%, env(safe-area-inset-top));
+    width: min(40%, 440px);
+  }
+  .batalla-pie {
+    gap: 12px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .batalla-voz {
+    width: min(32%, 380px);
+  }
+  .batalla-panel {
+    min-height: 18%;
+    margin-inline: max(3%, env(safe-area-inset-left)) max(3%, env(safe-area-inset-right));
+    padding: 14px 20px;
+  }
+  .batalla-acciones {
+    flex-direction: row;
+    align-items: center;
+    padding-left: 16px;
+  }
+}
+
+@media (orientation: landscape) and (min-height: 521px) {
+  .batalla-nombre {
+    font-size: 1.25rem;
+  }
+  .batalla-texto {
+    font-size: 1.25rem;
+  }
+  .batalla-pista {
+    font-size: 1.0625rem;
+  }
 }
 
 .batalla-verso {
@@ -1821,43 +1963,40 @@
     font-size: clamp(2rem, 14vh, 3rem);
   }
 
-  /* Battle: the shadow and the light keep the middle, from top to bottom; its name
-     goes to the left corner and its words to the right. */
+  /* Battle: little height, so the boxes shrink and the words take just over a quarter of it. */
   .batalla-cabecera {
     top: max(8px, env(safe-area-inset-top));
-    left: max(12px, env(safe-area-inset-left));
-    width: min(230px, 30%);
-    padding: 6px 10px 8px 6px;
-    transform: none;
+    width: min(44%, 300px);
+    padding-block: 6px 8px;
   }
-  .batalla-cabecera .retrato {
-    width: 44px;
-    height: 44px;
+  .batalla-pie {
+    gap: 6px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .batalla-voz {
+    width: min(32%, 240px);
+    padding-block: 6px 7px;
   }
   .batalla-nombre {
+    margin-bottom: 4px;
     font-size: 1rem;
   }
   .batalla-panel {
-    top: max(8px, env(safe-area-inset-top));
-    right: max(12px, env(safe-area-inset-right));
-    bottom: auto;
-    left: auto;
-    width: min(240px, 31%);
-    padding: 8px 12px 10px;
-    transform: none;
-  }
-  .batalla-estado {
-    flex-wrap: wrap;
-    gap: 4px 10px;
-    min-height: 0;
+    min-height: 25.5%;
+    margin-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
+    padding: 8px 12px;
   }
   .batalla-texto {
-    margin-top: 6px;
     font-size: 1rem;
-    line-height: 1.35;
+    line-height: 1.3;
   }
   .batalla-pista {
+    margin-top: 3px;
     font-size: 0.875rem;
+  }
+  .batalla-accion {
+    min-width: 0;
+    min-height: 40px;
   }
 
   /* A keepsake just found: the object on the left, what it is on the right. */
