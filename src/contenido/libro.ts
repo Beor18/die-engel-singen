@@ -1610,4 +1610,90 @@ hace temblar hasta a los santos.
       ],
     },
   },
+  {
+    id: "la-noche",
+    orden: 21,
+    tipo: "poema",
+    titulo: "LA NOCHE",
+    imagen: {
+      src: "/libro/la-noche.png",
+      alt: "Un pasillo gótico de piedra, de noche. A la izquierda, un ventanal con la luna llena detrás y una hiedra de hojas rojas; más abajo, una puerta de madera abierta deja ver la escalera del sótano, iluminada de rojo. Una alfombra roja recorre el pasillo hasta el fondo, donde brilla un corazón rojo. Entre las sombras de los arcos se adivinan hadas negras y un fantasma.",
+    },
+    texto: `
+Vienen a ustedes de noche:
+demonios, fantasmas
+y hadas negras.
+
+Suben desde el sótano,
+cruzan el pasillo
+y se esconden bajo las mantas.
+
+Escuchan sus plegarias.
+Cuentan sus latidos.
+
+Yo los espero despierto,
+con el corazón ardiendo.
+
+Les canto hasta el amanecer.
+
+Para entonces,
+ya saben mi nombre.
+`,
+    significado: {
+      texto: `
+«La noche»: cuando la oscuridad escucha todo lo que intentamos esconder.
+`,
+      enLaImagen: true,
+    },
+    escena: {
+      lugar: "pasillo",
+      elementos: [
+        {
+          imagen: "puerta-sotano",
+          nombre: "Puerta del sótano",
+          x: 0.13,
+          y: 0.6,
+          alto: 3.2,
+          ancho: 2,
+          luz: { color: "#ff3040", alcance: 3.4, altura: 0.4 },
+          dice: ["La puerta del sótano está abierta. De abajo sube una luz roja, y algo más."],
+        },
+        {
+          imagen: "ventanal-luna",
+          nombre: "Ventanal",
+          x: 0.14,
+          y: 0.14,
+          alto: 3.4,
+          luz: { color: "#9fb8ff", alcance: 3.6, altura: 0.65 },
+          dice: ["La luna llena detrás del vidrio. La hiedra roja trepa como si quisiera entrar."],
+        },
+        {
+          imagen: "hada-negra",
+          nombre: "Hada negra",
+          x: 0.95,
+          y: 0.3,
+          alto: 1.9,
+          mueve: "respira",
+          dice: ["Un hada negra, quieta contra la pared. Te está contando los latidos."],
+          conObjeto: { imagen: "corazon-ardiendo", dice: ["Ve el corazón que llevás y deja de contar. Ya sabe tu nombre."] },
+        },
+        { imagen: "hada-negra", nombre: "Hada negra", x: 0.3, y: 0.08, alto: 1.9, mueve: "respira", espejado: true, dice: [] },
+        { imagen: "fantasma", nombre: "Fantasma", x: 0.8, y: 0.1, alto: 2.4, mueve: "respira", dice: ["Un fantasma cruza el pasillo sin apuro. Va hacia las mantas de alguien."] },
+        { imagen: "corazon-ardiendo", nombre: "Corazón ardiendo", x: 0.78, y: 0.36, alto: 0.75, pasable: true, levantar: true, mueve: "brilla", recuerdo: "ardor", dice: ["Un corazón encendido al fondo del pasillo. Arde sin quemarse y no se apaga. Lo guardás."] },
+      ],
+    },
+    tono: "#8f7fd6",
+    clima: {
+      zonas: [
+        { tipo: "luz", x: 0.164, y: 0.065, rx: 0.05, ry: 0.035, fuerza: 0.14, velocidad: 0.4, color: "#bcd0ff" },
+        { tipo: "luz", x: 0.2, y: 0.62, rx: 0.09, ry: 0.09, fuerza: 0.2, velocidad: 1.4, color: "#ff3040" },
+        { tipo: "luz", x: 0.839, y: 0.316, rx: 0.03, ry: 0.022, fuerza: 0.3, velocidad: 2.2, color: "#ff3040" },
+        { tipo: "centelleo", x: 0.839, y: 0.316, rx: 0.025, ry: 0.02, fuerza: 0.5, velocidad: 1.1 },
+        { tipo: "viento", x: 0.06, y: 0.2, rx: 0.07, ry: 0.17, fuerza: 0.4, velocidad: 0.7 },
+        { tipo: "niebla", x: 0.5, y: 0.66, rx: 0.3, ry: 0.06, fuerza: 0.25, color: "#8fa3b8" },
+        { tipo: "niebla", x: 0.8, y: 0.09, rx: 0.1, ry: 0.06, fuerza: 0.2, color: "#8fa3b8" },
+        { tipo: "agua", x: 0.87, y: 0.42, rx: 0.08, ry: 0.06, fuerza: 0.4, velocidad: 0.5 },
+      ],
+    },
+  },
 ];

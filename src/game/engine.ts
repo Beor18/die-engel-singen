@@ -563,6 +563,11 @@ export class Engine {
       for (const s of this.shadows) s.alive = false;
       this.stepsSinceEncounter = -1e9;
     },
+    /** Leaves the light with that many flames, to check what happens when it runs low. */
+    dim: (flames = 1) => {
+      this.light = clamp(flames, 1, this.maxLight);
+      this.emit();
+    },
     /** The shadows still roaming, and whether each one is stunned. */
     shadows: () => this.shadows.filter((s) => s.alive).map((s) => ({ x: s.x, y: s.y, stunned: s.stunned > 0 })),
     /** Where the verses still missing are. */
@@ -1871,7 +1876,9 @@ export class Engine {
     n.result = result;
     n.doneAt = b.clock;
     this.o.audio.hum(n.degree, result);
-    b.bolts.push({ t: 0, amount: result === "perfect" && this.gifts.has("reflejo") ? 2 : 1, big: false });
+    // A burning heart: down to its last flame, the Voice sings twice as hard.
+    const ardor = this.gifts.has("ardor") && this.light <= 1 ? 2 : 1;
+    b.bolts.push({ t: 0, amount: (result === "perfect" && this.gifts.has("reflejo") ? 2 : 1) * ardor, big: ardor > 1 });
     if (!b.lesson) this.earn("notes", result === "perfect" ? VOICE.perfect : VOICE.good);
     this.popup(result === "perfect" ? "¡Justo!" : "Bien", result === "perfect" ? "#fff1c2" : "#f7f7f5", result === "perfect");
   }

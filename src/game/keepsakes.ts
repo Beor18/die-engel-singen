@@ -36,6 +36,7 @@ export const GIFTS: Record<Gift, string> = {
   despacio: "Las notas de las sombras llegan más despacio.",
   frente: "Hablás primero: cada batalla empieza con un golpe tuyo.",
   repique: "Cada verso que rescatás hace sonar una campana: las sombras cercanas quedan aturdidas.",
+  ardor: "Cuando te queda una sola llama, cada nota tuya pega doble.",
 };
 
 export type Keepsake = {

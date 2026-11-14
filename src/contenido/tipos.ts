@@ -121,7 +121,9 @@ export type Don =
   /** Cada batalla empieza con un golpe de la Voz. */
   | "frente"
   /** Cada verso rescatado hace sonar una campana que aturde a las sombras cercanas. */
-  | "repique";
+  | "repique"
+  /** Con una sola llama encendida, cada nota respondida pega doble. */
+  | "ardor";
 
 /** Un personaje u objeto de la ilustración que aparece dentro del nivel. */
 export type ElementoEscena = {
