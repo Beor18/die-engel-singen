@@ -1696,4 +1696,98 @@ ya saben mi nombre.
       ],
     },
   },
+  {
+    id: "freakshow",
+    orden: 22,
+    tipo: "poema",
+    titulo: "FREAKSHOW",
+    imagen: {
+      src: "/libro/freakshow.png",
+      alt: "La platea de un teatro de circo, entre telones de terciopelo rojo y bajo una araña de velas. Por una alfombra roja sembrada de confeti dorado, alguien de saco rojo camina de espaldas hacia el fondo, donde un cartel rojo encendido marca una salida con luz azul. A los costados, en los palcos, un público con máscaras de arlequín, de médico de la peste y de conejo aplaude.",
+    },
+    texto: `
+Justo donde quiero estar.
+
+Hay algo mal en mí.
+Lo sé.
+
+Necesito algo que me calme,
+pero no puedo pagar el olvido.
+
+Dame algo
+que me ayude a escapar.
+
+Se abre el telón.
+
+Los monstruos aplauden.
+
+Yo sigo buscando la salida.
+`,
+    significado: {
+      texto: `
+«Freakshow»: un espectáculo del que queremos escapar,
+aunque una parte de nosotros todavía quiera quedarse.
+`,
+      enLaImagen: true,
+    },
+    escena: {
+      lugar: "teatro",
+      elementos: [
+        {
+          imagen: "salida",
+          nombre: "Salida",
+          x: 0.5,
+          y: 0.58,
+          alto: 3.2,
+          ancho: 2,
+          luz: { color: "#8fb4ff", alcance: 3.4, altura: 0.45 },
+          dice: ["Un cartel rojo encendido sobre el telón del fondo. Por la abertura entra una luz fría, de afuera."],
+        },
+        {
+          imagen: "arlequin",
+          nombre: "Arlequín",
+          persona: true,
+          x: 0.9,
+          y: 0.64,
+          alto: 1.9,
+          espejado: true,
+          mueve: "aplaude",
+          dice: ["¡Bravo! Justo donde querías estar, ¿no?", "Quedate. Acá nadie te pregunta qué tenés de malo."],
+          conObjeto: { imagen: "mascara-dorada", dice: ["Con esa máscara ya sos uno de los nuestros.", "¿Para qué vas a buscar la salida, si aplaudís igual que nosotros?"] },
+        },
+        {
+          imagen: "medico-peste",
+          nombre: "Médico de la peste",
+          persona: true,
+          x: 0.16,
+          y: 0.62,
+          alto: 2,
+          mueve: "aplaude",
+          dice: ["Para lo tuyo tengo algo que calma.", "El olvido, en cambio, se paga aparte."],
+        },
+        { imagen: "conejo", nombre: "Conejo", x: 0.28, y: 0.6, alto: 1.9, mueve: "aplaude", dice: ["Un conejo blanco aplaude sin parar. No mira el escenario: te mira a vos."] },
+        { imagen: "conejo", nombre: "Conejo", x: 0.78, y: 0.6, alto: 1.9, mueve: "aplaude", espejado: true, dice: [] },
+        { imagen: "telon", nombre: "Telón", x: 0.05, y: 0.4, alto: 3.6, dice: ["Se abre el telón. Del otro lado no hay escenario: hay más público."] },
+        { imagen: "telon", nombre: "Telón", x: 0.95, y: 0.4, alto: 3.6, espejado: true, dice: [] },
+        { imagen: "arana", nombre: "Araña", x: 0.5, y: 0.08, alto: 2, mueve: "llama", luz: { color: "#ffc070", alcance: 3, altura: 0.7 }, dice: [] },
+        { nombre: "Cartel de salida", x: 0.54, y: 0.52, luz: { color: "#ff3040", alcance: 1.8 }, dice: [] },
+        { imagen: "mascara-dorada", nombre: "Máscara dorada", x: 0.4, y: 0.8, alto: 0.6, pasable: true, levantar: true, mueve: "brilla", recuerdo: "salida", dice: ["Una máscara dorada tirada en la alfombra, entre el confeti. Con ella puesta, cualquiera se pierde entre el público. La guardás."] },
+      ],
+    },
+    tono: "#d6a24e",
+    clima: {
+      particulas: [{ tipo: "confeti", cantidad: 0.4 }],
+      zonas: [
+        { tipo: "luz", x: 0.5, y: 0.533, rx: 0.05, ry: 0.06, fuerza: 0.25, velocidad: 0.6, color: "#8fb4ff" },
+        { tipo: "luz", x: 0.5, y: 0.489, rx: 0.04, ry: 0.015, fuerza: 0.3, velocidad: 1.8, color: "#ff3040" },
+        { tipo: "luz", x: 0.5, y: 0.026, rx: 0.13, ry: 0.03, fuerza: 0.2, velocidad: 1.6, color: "#ffc070" },
+        { tipo: "luz", x: 0.15, y: 0.454, rx: 0.06, ry: 0.04, fuerza: 0.15, velocidad: 1.3, color: "#ffc070" },
+        { tipo: "luz", x: 0.86, y: 0.454, rx: 0.06, ry: 0.04, fuerza: 0.15, velocidad: 1.2, color: "#ffc070" },
+        { tipo: "centelleo", x: 0.5, y: 0.766, rx: 0.1, ry: 0.08, fuerza: 0.5, velocidad: 1.2 },
+        { tipo: "viento", x: 0.06, y: 0.227, rx: 0.06, ry: 0.2, fuerza: 0.4, velocidad: 0.6 },
+        { tipo: "viento", x: 0.94, y: 0.227, rx: 0.06, ry: 0.2, fuerza: 0.4, velocidad: 0.55 },
+        { tipo: "niebla", x: 0.5, y: 0.624, rx: 0.12, ry: 0.04, fuerza: 0.2, color: "#8fa3b8" },
+      ],
+    },
+  },
 ];

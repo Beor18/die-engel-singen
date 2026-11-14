@@ -1958,8 +1958,10 @@ export class Engine {
     const b = this.battle;
     if (!b || b.guardian || this.paused || this.mode !== "battle" || (b.phase !== "rest" && b.phase !== "call") || b.losing > 0) return;
     this.o.audio.ui();
+    // With the golden mask, the shadow left behind gets lost in the crowd for good.
+    const lost = Boolean(b.shadow) && this.gifts.has("salida");
     this.closeBattle("fled");
-    this.showToast("Te escapaste. La sombra quedó aturdida.");
+    this.showToast(lost ? "Te escapaste. La sombra se perdió entre el público." : "Te escapaste. La sombra quedó aturdida.");
   }
 
   private win() {
@@ -2001,7 +2003,7 @@ export class Engine {
       return;
     }
     if (b.shadow) {
-      if (result === "won") b.shadow.alive = false;
+      if (result === "won" || this.gifts.has("salida")) b.shadow.alive = false;
       else b.shadow.stunned = 3;
     }
     this.invulnerable = 1.6;

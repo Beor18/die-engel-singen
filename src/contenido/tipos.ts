@@ -123,7 +123,9 @@ export type Don =
   /** Cada verso rescatado hace sonar una campana que aturde a las sombras cercanas. */
   | "repique"
   /** Con una sola llama encendida, cada nota respondida pega doble. */
-  | "ardor";
+  | "ardor"
+  /** La sombra de la que la Voz se escapa se pierde entre el público y no vuelve. */
+  | "salida";
 
 /** Un personaje u objeto de la ilustración que aparece dentro del nivel. */
 export type ElementoEscena = {
